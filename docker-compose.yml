@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  redmine-mcp-api:
+    image: harbor.sw.ciot.work/mcp/redmine:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - REDMINE_URL=http://advrm.advantech.com:3002
+      - LOG_LEVEL=info
+    command: ["api", "--port", "8080"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  redmine-mcp-sse:
+    image: harbor.sw.ciot.work/mcp/redmine:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    environment:
+      - REDMINE_URL=http://advrm.advantech.com:3002
+      - LOG_LEVEL=info
+    command: ["mcp", "--sse", "--port", "8080"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3

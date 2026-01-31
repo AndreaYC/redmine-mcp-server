@@ -1,0 +1,504 @@
+basePath: /api/v1
+host: localhost:8080
+info:
+  contact: {}
+  description: REST API for Redmine integration with AI assistants
+  title: Redmine MCP Server API
+  version: "1.0"
+paths:
+  /activities:
+    get:
+      consumes:
+      - application/json
+      description: Returns all available time entry activities
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: List activities
+      tags:
+      - Reference
+  /issues:
+    get:
+      consumes:
+      - application/json
+      description: Search issues with filters
+      parameters:
+      - description: Project name or ID
+        in: query
+        name: project
+        type: string
+      - description: Tracker name or ID
+        in: query
+        name: tracker
+        type: string
+      - description: 'Status: open, closed, all, or specific name'
+        in: query
+        name: status
+        type: string
+      - description: Assignee name or 'me'
+        in: query
+        name: assigned_to
+        type: string
+      - default: 25
+        description: Number of issues to return
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Search issues
+      tags:
+      - Issues
+    post:
+      consumes:
+      - application/json
+      description: Create a new issue
+      parameters:
+      - description: Issue data
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Create issue
+      tags:
+      - Issues
+  /issues/{id}:
+    get:
+      consumes:
+      - application/json
+      description: Get issue details including journals and relations
+      parameters:
+      - description: Issue ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Get issue
+      tags:
+      - Issues
+    patch:
+      consumes:
+      - application/json
+      description: Update an existing issue
+      parameters:
+      - description: Issue ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Update data
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Update issue
+      tags:
+      - Issues
+  /issues/{id}/relations:
+    post:
+      consumes:
+      - application/json
+      description: Create a relation between two issues
+      parameters:
+      - description: Source Issue ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Relation data
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Add relation
+      tags:
+      - Issues
+  /issues/{id}/subtasks:
+    post:
+      consumes:
+      - application/json
+      description: Create a subtask under an existing issue
+      parameters:
+      - description: Parent Issue ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Subtask data
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Create subtask
+      tags:
+      - Issues
+  /issues/{id}/watchers:
+    post:
+      consumes:
+      - application/json
+      description: Add a watcher to an issue
+      parameters:
+      - description: Issue ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Watcher data
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Add watcher
+      tags:
+      - Issues
+  /me:
+    get:
+      consumes:
+      - application/json
+      description: Returns information about the current user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Get current user
+      tags:
+      - Account
+  /projects:
+    get:
+      consumes:
+      - application/json
+      description: Returns a list of all projects
+      parameters:
+      - default: 100
+        description: Number of projects to return
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: List projects
+      tags:
+      - Projects
+    post:
+      consumes:
+      - application/json
+      description: Create a new project
+      parameters:
+      - description: Project data
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Create project
+      tags:
+      - Projects
+  /statuses:
+    get:
+      consumes:
+      - application/json
+      description: Returns all available issue statuses
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: List statuses
+      tags:
+      - Reference
+  /time_entries:
+    post:
+      consumes:
+      - application/json
+      description: Log time on an issue
+      parameters:
+      - description: Time entry data
+        in: body
+        name: request
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Create time entry
+      tags:
+      - Time Entries
+  /trackers:
+    get:
+      consumes:
+      - application/json
+      description: Returns all available trackers
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: List trackers
+      tags:
+      - Reference
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: X-Redmine-API-Key
+    type: apiKey
+swagger: "2.0"
