@@ -202,6 +202,148 @@ make docker-build
 3. Import from `http://your-server/openapi.yaml`
 4. Set Authentication: API Key in header `X-Redmine-API-Key`
 
+## Usage Examples
+
+Below are real-world examples of using the Redmine MCP tools with Claude Code.
+
+### Check Current User (`me`)
+
+```
+User: 測試 Redmine 連線
+
+Claude: [Calls mcp__redmine__whoami]
+
+Result:
+{
+  "id": 123,
+  "login": "john.doe",
+  "firstname": "John",
+  "lastname": "Doe",
+  "mail": "john.doe@example.com",
+  "last_login_on": "2026-01-30T03:36:21Z"
+}
+```
+
+### List Projects
+
+```
+User: 列出我可以存取的專案
+
+Claude: [Calls mcp__redmine__list-projects with limit=5]
+
+Result:
+| ID  | Identifier        | Name                    |
+|-----|-------------------|-------------------------|
+| 78  | common-info       | Common Information      |
+| 156 | web-platform      | Web Platform            |
+| 201 | server-monitoring | Server Monitoring       |
+| 245 | devops-tools      | DevOps Tools            |
+| 302 | mobile-app        | Mobile Application      |
+
+Total: 50 projects
+```
+
+### List My Issues
+
+```
+User: 列出指派給我的 open issues
+
+Claude: [Calls mcp__redmine__list-my-issues with statusId="open"]
+
+Result:
+| ID     | Project           | Type    | Status      | Subject                          |
+|--------|-------------------|---------|-------------|----------------------------------|
+| #12345 | Server Monitoring | Bug     | In Progress | API response timeout issue       |
+| #12346 | Web Platform      | Feature | New         | Add dark mode support            |
+| #12347 | DevOps Tools      | Task    | In Progress | Update deployment scripts        |
+
+Total: 15 open issues
+```
+
+### Get Issue Details
+
+```
+User: 查看 #12345
+
+Claude: [Calls mcp__redmine__get-issue with issueId="12345"]
+
+Result:
+## Issue #12345
+
+| Field       | Value                              |
+|-------------|------------------------------------|
+| Project     | Server Monitoring                  |
+| Type        | Bug                                |
+| Status      | In Progress                        |
+| Priority    | Normal                             |
+| Author      | jane.smith                         |
+| Assigned to | john.doe                           |
+| Done ratio  | 30%                                |
+| Created     | 2026-01-15                         |
+| Updated     | 2026-01-28                         |
+
+### Subject
+API response timeout issue when fetching large datasets
+
+### Description
+When requesting more than 1000 records, the API times out after 30 seconds.
+
+### Journals
+**2026-01-20 - jane.smith:**
+> Increased timeout to 60 seconds, but issue persists with 5000+ records.
+```
+
+### Log Time Entry
+
+```
+User: 幫我在 #12345 更新工時 2 小時
+
+Claude: [Calls mcp__redmine__update-issue with issueId="12345", logHours=2]
+
+Result:
+Time entry created:
+| Field      | Value                              |
+|------------|------------------------------------|
+| Entry ID   | 56789                              |
+| Issue      | #12345 - API response timeout      |
+| Hours      | 2                                  |
+| Activity   | Development                        |
+| Date       | 2026-02-01                         |
+| User       | john.doe                           |
+```
+
+### Update Issue with Notes
+
+```
+User: 在 #12345 加個備註說已經找到問題原因
+
+Claude: [Calls mcp__redmine__update-issue with issueId="12345",
+         notes="Found root cause: N+1 query in the pagination logic"]
+
+Result:
+Issue #12345 updated successfully.
+Note added to journal.
+```
+
+### Search Issues by Project
+
+```
+User: 找 Server Monitoring 專案的所有 Bug
+
+Claude: [Calls mcp__redmine__list-my-issues with projectId="server-monitoring",
+         statusId="open"]
+
+Result:
+Found 8 bugs in Server Monitoring:
+
+| ID     | Status      | Subject                            | Updated    |
+|--------|-------------|------------------------------------|------------|
+| #12345 | In Progress | API response timeout issue         | 2026-01-28 |
+| #12350 | New         | Memory leak in data collector      | 2026-01-25 |
+| #12355 | Clarifying  | Dashboard shows incorrect metrics  | 2026-01-20 |
+...
+```
+
 ## License
 
 MIT
