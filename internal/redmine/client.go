@@ -328,6 +328,7 @@ type SearchIssuesParams struct {
 	TrackerID    int
 	StatusID     string // "open", "closed", "*", or specific status ID
 	AssignedToID string // "me" or user ID
+	Subject      string // Search keyword for subject (partial match)
 	Limit        int
 	Offset       int
 }
@@ -347,6 +348,10 @@ func (c *Client) SearchIssues(params SearchIssuesParams) ([]Issue, int, error) {
 	}
 	if params.AssignedToID != "" {
 		query.Set("assigned_to_id", params.AssignedToID)
+	}
+	if params.Subject != "" {
+		// Use ~keyword for partial match (contains)
+		query.Set("subject", "~"+params.Subject)
 	}
 	if params.Limit > 0 {
 		query.Set("limit", strconv.Itoa(params.Limit))

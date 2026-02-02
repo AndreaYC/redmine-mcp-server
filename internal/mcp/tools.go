@@ -73,6 +73,9 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		mcp.WithString("assigned_to",
 			mcp.Description("Assignee name or 'me' for current user"),
 		),
+		mcp.WithString("subject",
+			mcp.Description("Search keyword in issue subject (partial match)"),
+		),
 		mcp.WithNumber("limit",
 			mcp.Description("Number of issues to return (default: 25)"),
 		),
@@ -358,6 +361,9 @@ func (h *ToolHandlers) handleIssuesSearch(ctx context.Context, req mcp.CallToolR
 			params.AssignedToID = strconv.Itoa(userID)
 		}
 	}
+
+	// Subject keyword search
+	params.Subject = req.GetString("subject", "")
 
 	params.Limit = req.GetInt("limit", 25)
 
