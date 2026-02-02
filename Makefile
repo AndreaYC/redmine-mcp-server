@@ -47,7 +47,7 @@ deps:
 
 # Docker
 docker-build:
-	docker build -t $(DOCKER_IMAGE):latest -t $(DOCKER_IMAGE):$(VERSION) .
+	docker buildx build --platform linux/amd64 -t $(DOCKER_IMAGE):latest -t $(DOCKER_IMAGE):$(VERSION) --load .
 
 docker-run:
 	docker run -p 8080:8080 -e REDMINE_URL=http://advrm.advantech.com:3002 $(DOCKER_IMAGE):latest

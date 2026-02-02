@@ -74,16 +74,15 @@ func (s *Server) runSSE() error {
 		"redmine_url", s.config.RedmineURL,
 	)
 
-	// Create a custom SSE handler that extracts API key from header
-	sseHandler := &sseHandler{
-		redmineURL: s.config.RedmineURL,
-	}
+	// Create session manager for multi-tenant SSE
+	sessionMgr := newSessionManager(s.config.RedmineURL)
 
 	// Rate limiter: 100 requests per minute per IP
 	rateLimiter := newSimpleRateLimiter(100, time.Minute)
 
 	mux := http.NewServeMux()
-	mux.Handle("/sse", sseHandler)
+	mux.HandleFunc("/sse", sessionMgr.handleSSE)
+	mux.HandleFunc("/message", sessionMgr.handleMessage)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
@@ -95,23 +94,40 @@ func (s *Server) runSSE() error {
 	return http.ListenAndServe(addr, handler)
 }
 
-// sseHandler handles SSE connections with per-request API key
-type sseHandler struct {
+// sessionManager manages SSE sessions for multi-tenant access
+type sessionManager struct {
+	mu         sync.RWMutex
+	servers    map[string]*server.SSEServer // API key -> SSE server
 	redmineURL string
 }
 
-func (h *sseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	// Get API key from header
-	apiKey := r.Header.Get("X-Redmine-API-Key")
-	if apiKey == "" {
-		http.Error(w, "Missing X-Redmine-API-Key header", http.StatusUnauthorized)
-		return
+func newSessionManager(redmineURL string) *sessionManager {
+	return &sessionManager{
+		servers:    make(map[string]*server.SSEServer),
+		redmineURL: redmineURL,
+	}
+}
+
+func (m *sessionManager) getOrCreateServer(apiKey string) *server.SSEServer {
+	m.mu.RLock()
+	if srv, ok := m.servers[apiKey]; ok {
+		m.mu.RUnlock()
+		return srv
+	}
+	m.mu.RUnlock()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if srv, ok := m.servers[apiKey]; ok {
+		return srv
 	}
 
-	// Create client for this request
-	client := redmine.NewClient(h.redmineURL, apiKey)
+	// Create client for this API key
+	client := redmine.NewClient(m.redmineURL, apiKey)
 
-	// Create MCP server for this connection
+	// Create MCP server
 	mcpServer := server.NewMCPServer(
 		ServerName,
 		ServerVersion,
@@ -122,8 +138,39 @@ func (h *sseHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	handler := NewToolHandlers(client)
 	handler.RegisterTools(mcpServer)
 
-	// Create SSE server and handle the connection
-	sseServer := server.NewSSEServer(mcpServer)
+	// Create SSE server
+	sseServer := server.NewSSEServer(mcpServer, server.WithBaseURL(""))
+	m.servers[apiKey] = sseServer
+
+	slog.Info("Created new SSE server for API key", "key_prefix", apiKey[:8]+"...")
+
+	return sseServer
+}
+
+func (m *sessionManager) handleSSE(w http.ResponseWriter, r *http.Request) {
+	apiKey := r.Header.Get("X-Redmine-API-Key")
+	if apiKey == "" {
+		http.Error(w, "Missing X-Redmine-API-Key header", http.StatusUnauthorized)
+		return
+	}
+
+	sseServer := m.getOrCreateServer(apiKey)
+	sseServer.ServeHTTP(w, r)
+}
+
+func (m *sessionManager) handleMessage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	apiKey := r.Header.Get("X-Redmine-API-Key")
+	if apiKey == "" {
+		http.Error(w, "Missing X-Redmine-API-Key header", http.StatusUnauthorized)
+		return
+	}
+
+	sseServer := m.getOrCreateServer(apiKey)
 	sseServer.ServeHTTP(w, r)
 }
 
