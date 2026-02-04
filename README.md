@@ -4,7 +4,7 @@ A Model Context Protocol (MCP) server for Redmine, enabling AI assistants (Claud
 
 ## Features
 
-- **14 MCP Tools** for managing issues, projects, time entries
+- **18 MCP Tools** for managing issues, projects, time entries
 - **REST API** for ChatGPT GPT Actions
 - **Multiple transport modes**: stdio, SSE, HTTP
 - **Smart name resolution**: Use names instead of IDs (projects, trackers, users, etc.)
@@ -73,6 +73,12 @@ X-Redmine-API-Key: user-api-key
 
 ### Time Entries
 - `timeEntries.create` - Log time on issue
+- `timeEntries.list` - List time entries with filters (project, user, date range)
+- `timeEntries.report` - Generate aggregated time reports
+
+### Custom Fields
+- `customFields.list` - List available custom fields for a project/tracker
+- `issues.getRequiredFields` - Get required fields for creating issues
 
 ### Reference
 - `trackers.list` - List all trackers
@@ -343,6 +349,104 @@ Found 8 bugs in Server Monitoring:
 | #12355 | Clarifying  | Dashboard shows incorrect metrics  | 2026-01-20 |
 ...
 ```
+
+## Time Entry Analysis
+
+The `timeEntries.list` and `timeEntries.report` tools enable powerful time tracking analysis.
+
+### Available Parameters
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `project` | Filter by project (name or ID) | `"1306"` |
+| `user` | Filter by user, use `"me"` for current user | `"me"`, `"john.doe"` |
+| `from` / `to` | Date range (YYYY-MM-DD) | `"2026-01-01"` |
+| `period` | Date shortcut | `"this_week"`, `"last_week"`, `"this_month"`, `"last_month"` |
+| `group_by` | Aggregation dimensions (report only) | `"project"`, `"user"`, `"activity"`, `"project,user"` |
+
+### Analysis Examples
+
+#### 1. My Time This Week
+
+```
+User: How much time did I log this week?
+
+Claude: [Calls timeEntries.list with user="me", period="this_week"]
+
+Result:
+{
+  "total_count": 5,
+  "time_entries": [
+    {"project": "SKY Rack", "hours": 3, "activity": "Development", "spent_on": "2026-02-03"},
+    {"project": "SKY Rack", "hours": 2.5, "activity": "Code Review", "spent_on": "2026-02-02"},
+    ...
+  ]
+}
+```
+
+#### 2. Team Hours by Person (Last Month)
+
+```
+User: Show me last month's hours by team member
+
+Claude: [Calls timeEntries.report with period="last_month", group_by="user"]
+
+Result:
+| Rank | User        | Hours |
+|------|-------------|-------|
+| 1    | Eric.Hsu    | 184h  |
+| 2    | Willy.Yao   | 179h  |
+| 3    | Deron.Chen  | 177h  |
+| ...  | (36 people) | ...   |
+
+Total: 3,321 hours (923 entries)
+```
+
+#### 3. Project Hours by Activity Type
+
+```
+User: How is time distributed across activities in project 1306?
+
+Claude: [Calls timeEntries.report with project="1306", period="last_month", group_by="activity"]
+
+Result:
+| Activity    | Hours   | Percentage |
+|-------------|---------|------------|
+| Development | 178.25h | 63%        |
+| Others      | 96.9h   | 34%        |
+| Study Spec  | 3.5h    | 1%         |
+| Debug       | 3.5h    | 1%         |
+
+Total: 282 hours
+```
+
+#### 4. Multi-Dimensional Analysis (Project + Activity)
+
+```
+User: Show hours breakdown by project and activity
+
+Claude: [Calls timeEntries.report with period="last_month", group_by="project,activity"]
+
+Result:
+| Project                  | Activity    | Hours |
+|--------------------------|-------------|-------|
+| Platform Management Team | Others      | 423h  |
+| OS/BSP team              | Others      | 325h  |
+| SKY Rack Mgmt Software   | Development | 178h  |
+| NCG_BIOS_Task            | Development | 167h  |
+| ...                      | ...         | ...   |
+```
+
+### Common Analysis Scenarios
+
+| Scenario | Query Parameters |
+|----------|------------------|
+| My hours this week | `user="me", period="this_week"` |
+| Who spent most time on a project? | `project="X", period="last_month", group_by="user"` |
+| Team activity distribution | `period="last_month", group_by="activity"` |
+| Which projects consume most time? | `period="last_month", group_by="project"` |
+| One person's project allocation | `user="X", period="last_month", group_by="project"` |
+| Detailed breakdown per project | `project="X", group_by="user,activity"` |
 
 ## License
 
