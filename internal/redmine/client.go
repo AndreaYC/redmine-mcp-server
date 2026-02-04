@@ -590,6 +590,25 @@ type TimeEntry struct {
 	UpdatedOn string  `json:"updated_on"`
 }
 
+// ListTimeEntriesParams are parameters for listing time entries
+type ListTimeEntriesParams struct {
+	ProjectID string
+	UserID    string
+	IssueID   int
+	From      string // YYYY-MM-DD
+	To        string // YYYY-MM-DD
+	Limit     int
+	Offset    int
+}
+
+// TimeEntriesResponse is the response from /time_entries.json
+type TimeEntriesResponse struct {
+	TimeEntries []TimeEntry `json:"time_entries"`
+	TotalCount  int         `json:"total_count"`
+	Offset      int         `json:"offset"`
+	Limit       int         `json:"limit"`
+}
+
 // CreateTimeEntry creates a new time entry
 func (c *Client) CreateTimeEntry(params CreateTimeEntryParams) (*TimeEntry, error) {
 	reqBody := map[string]interface{}{
@@ -621,6 +640,48 @@ func (c *Client) CreateTimeEntry(params CreateTimeEntryParams) (*TimeEntry, erro
 	}
 
 	return &resp.TimeEntry, nil
+}
+
+// ListTimeEntries returns time entries with optional filters
+func (c *Client) ListTimeEntries(params ListTimeEntriesParams) ([]TimeEntry, int, error) {
+	query := url.Values{}
+
+	if params.ProjectID != "" {
+		query.Set("project_id", params.ProjectID)
+	}
+	if params.UserID != "" {
+		query.Set("user_id", params.UserID)
+	}
+	if params.IssueID > 0 {
+		query.Set("issue_id", strconv.Itoa(params.IssueID))
+	}
+	if params.From != "" {
+		query.Set("from", params.From)
+	}
+	if params.To != "" {
+		query.Set("to", params.To)
+	}
+	if params.Limit > 0 {
+		query.Set("limit", strconv.Itoa(params.Limit))
+	} else {
+		query.Set("limit", "25")
+	}
+	if params.Offset > 0 {
+		query.Set("offset", strconv.Itoa(params.Offset))
+	}
+
+	path := "/time_entries.json?" + query.Encode()
+	data, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var resp TimeEntriesResponse
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, 0, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return resp.TimeEntries, resp.TotalCount, nil
 }
 
 // ProjectMembership represents a project membership
