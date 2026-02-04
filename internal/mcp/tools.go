@@ -5,11 +5,47 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/ycho/redmine-mcp-server/internal/redmine"
 )
+
+// resolveDatePeriod converts period shortcuts to from/to dates
+func resolveDatePeriod(period string) (from, to string) {
+	now := time.Now()
+
+	switch period {
+	case "this_week":
+		// Start of this week (Monday)
+		weekday := int(now.Weekday())
+		if weekday == 0 {
+			weekday = 7
+		}
+		start := now.AddDate(0, 0, -weekday+1)
+		end := start.AddDate(0, 0, 6)
+		return start.Format("2006-01-02"), end.Format("2006-01-02")
+	case "last_week":
+		weekday := int(now.Weekday())
+		if weekday == 0 {
+			weekday = 7
+		}
+		start := now.AddDate(0, 0, -weekday-6)
+		end := start.AddDate(0, 0, 6)
+		return start.Format("2006-01-02"), end.Format("2006-01-02")
+	case "this_month":
+		start := time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, now.Location())
+		end := start.AddDate(0, 1, -1)
+		return start.Format("2006-01-02"), end.Format("2006-01-02")
+	case "last_month":
+		start := time.Date(now.Year(), now.Month()-1, 1, 0, 0, 0, 0, now.Location())
+		end := start.AddDate(0, 1, -1)
+		return start.Format("2006-01-02"), end.Format("2006-01-02")
+	default:
+		return "", ""
+	}
+}
 
 // ToolHandlers contains all MCP tool handlers
 type ToolHandlers struct {
@@ -214,6 +250,17 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Description("Comments"),
 		),
 	), h.handleTimeEntriesCreate)
+
+	s.AddTool(mcp.NewTool("timeEntries.list",
+		mcp.WithDescription("List time entries with filters"),
+		mcp.WithString("project", mcp.Description("Project name or ID")),
+		mcp.WithString("user", mcp.Description("User name or ID, use 'me' for current user")),
+		mcp.WithNumber("issue_id", mcp.Description("Filter by issue ID")),
+		mcp.WithString("from", mcp.Description("Start date (YYYY-MM-DD)")),
+		mcp.WithString("to", mcp.Description("End date (YYYY-MM-DD)")),
+		mcp.WithString("period", mcp.Description("Date shortcut: this_week, last_week, this_month, last_month")),
+		mcp.WithNumber("limit", mcp.Description("Results limit (default 25)")),
+	), h.handleTimeEntriesList)
 
 	// Reference
 	s.AddTool(mcp.NewTool("trackers.list",
@@ -668,6 +715,84 @@ func (h *ToolHandlers) handleTimeEntriesCreate(ctx context.Context, req mcp.Call
 		"activity": entry.Activity.Name,
 		"comments": entry.Comments,
 		"spent_on": entry.SpentOn,
+	})
+}
+
+func (h *ToolHandlers) handleTimeEntriesList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	params := redmine.ListTimeEntriesParams{}
+
+	// Handle project
+	var projectID int
+	if project := req.GetString("project", ""); project != "" {
+		var err error
+		projectID, err = h.resolver.ResolveProject(project)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+		}
+		params.ProjectID = strconv.Itoa(projectID)
+	}
+
+	// Handle user
+	if user := req.GetString("user", ""); user != "" {
+		if user == "me" {
+			params.UserID = "me"
+		} else {
+			userID, err := h.resolver.ResolveUser(user, projectID)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve user: %v", err)), nil
+			}
+			params.UserID = strconv.Itoa(userID)
+		}
+	}
+
+	// Handle issue_id
+	if issueID := req.GetInt("issue_id", 0); issueID > 0 {
+		params.IssueID = issueID
+	}
+
+	// Handle date period shortcut
+	if period := req.GetString("period", ""); period != "" {
+		params.From, params.To = resolveDatePeriod(period)
+	}
+
+	// Handle explicit from/to (override period if both specified)
+	if from := req.GetString("from", ""); from != "" {
+		params.From = from
+	}
+	if to := req.GetString("to", ""); to != "" {
+		params.To = to
+	}
+
+	// Handle limit
+	params.Limit = req.GetInt("limit", 25)
+
+	entries, totalCount, err := h.client.ListTimeEntries(params)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to list time entries: %v", err)), nil
+	}
+
+	// Format results
+	results := make([]map[string]any, len(entries))
+	for i, entry := range entries {
+		result := map[string]any{
+			"id":       entry.ID,
+			"project":  entry.Project.Name,
+			"user":     entry.User.Name,
+			"activity": entry.Activity.Name,
+			"hours":    entry.Hours,
+			"spent_on": entry.SpentOn,
+			"comments": entry.Comments,
+		}
+		if entry.Issue != nil {
+			result["issue_id"] = entry.Issue.ID
+		}
+		results[i] = result
+	}
+
+	return jsonResult(map[string]any{
+		"total_count":  totalCount,
+		"count":        len(entries),
+		"time_entries": results,
 	})
 }
 
