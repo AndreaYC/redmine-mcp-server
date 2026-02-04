@@ -4,7 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -261,6 +263,16 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		mcp.WithString("period", mcp.Description("Date shortcut: this_week, last_week, this_month, last_month")),
 		mcp.WithNumber("limit", mcp.Description("Results limit (default 25)")),
 	), h.handleTimeEntriesList)
+
+	s.AddTool(mcp.NewTool("timeEntries.report",
+		mcp.WithDescription("Generate time entry report with aggregation"),
+		mcp.WithString("project", mcp.Description("Project name or ID")),
+		mcp.WithString("user", mcp.Description("User name or ID")),
+		mcp.WithString("from", mcp.Description("Start date (YYYY-MM-DD)")),
+		mcp.WithString("to", mcp.Description("End date (YYYY-MM-DD)")),
+		mcp.WithString("period", mcp.Description("Date shortcut: this_week, last_week, this_month, last_month")),
+		mcp.WithString("group_by", mcp.Required(), mcp.Description("Grouping: project, user, activity, or comma-separated combination")),
+	), h.handleTimeEntriesReport)
 
 	// Reference
 	s.AddTool(mcp.NewTool("trackers.list",
@@ -794,6 +806,132 @@ func (h *ToolHandlers) handleTimeEntriesList(ctx context.Context, req mcp.CallTo
 		"count":        len(entries),
 		"time_entries": results,
 	})
+}
+
+func (h *ToolHandlers) handleTimeEntriesReport(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Build params for fetching all matching entries
+	params := redmine.ListTimeEntriesParams{
+		Limit: 100, // Fetch in batches
+	}
+
+	// Handle project filter
+	if project := req.GetString("project", ""); project != "" {
+		projectID, err := h.resolver.ResolveProject(project)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+		}
+		params.ProjectID = strconv.Itoa(projectID)
+	}
+
+	// Handle user filter
+	if user := req.GetString("user", ""); user != "" {
+		if user == "me" {
+			params.UserID = "me"
+		} else {
+			userID, err := h.resolver.ResolveUser(user, 0)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve user: %v", err)), nil
+			}
+			params.UserID = strconv.Itoa(userID)
+		}
+	}
+
+	// Handle date period
+	if period := req.GetString("period", ""); period != "" {
+		params.From, params.To = resolveDatePeriod(period)
+	}
+	if from := req.GetString("from", ""); from != "" {
+		params.From = from
+	}
+	if to := req.GetString("to", ""); to != "" {
+		params.To = to
+	}
+
+	// Get grouping
+	groupByStr, err := req.RequireString("group_by")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	groupBy := strings.Split(groupByStr, ",")
+	for i := range groupBy {
+		groupBy[i] = strings.TrimSpace(groupBy[i])
+	}
+
+	// Fetch all entries (paginated)
+	var allEntries []redmine.TimeEntry
+	for {
+		entries, _, err := h.client.ListTimeEntries(params)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to fetch time entries: %v", err)), nil
+		}
+		allEntries = append(allEntries, entries...)
+		if len(entries) < params.Limit {
+			break
+		}
+		params.Offset += params.Limit
+	}
+
+	// Aggregate by group_by
+	type GroupKey struct {
+		Project  string
+		User     string
+		Activity string
+	}
+
+	aggregated := make(map[GroupKey]float64)
+	var totalHours float64
+
+	for _, entry := range allEntries {
+		key := GroupKey{}
+		for _, g := range groupBy {
+			switch g {
+			case "project":
+				key.Project = entry.Project.Name
+			case "user":
+				key.User = entry.User.Name
+			case "activity":
+				key.Activity = entry.Activity.Name
+			}
+		}
+		aggregated[key] += entry.Hours
+		totalHours += entry.Hours
+	}
+
+	// Build result
+	groups := make([]map[string]any, 0, len(aggregated))
+	for key, hours := range aggregated {
+		group := map[string]any{
+			"hours": hours,
+		}
+		if key.Project != "" {
+			group["project"] = key.Project
+		}
+		if key.User != "" {
+			group["user"] = key.User
+		}
+		if key.Activity != "" {
+			group["activity"] = key.Activity
+		}
+		groups = append(groups, group)
+	}
+
+	// Sort by hours descending
+	sort.Slice(groups, func(i, j int) bool {
+		return groups[i]["hours"].(float64) > groups[j]["hours"].(float64)
+	})
+
+	result := map[string]any{
+		"total_hours": totalHours,
+		"entry_count": len(allEntries),
+		"group_by":    groupBy,
+		"groups":      groups,
+	}
+
+	if params.From != "" || params.To != "" {
+		result["period"] = fmt.Sprintf("%s ~ %s", params.From, params.To)
+	}
+
+	return jsonResult(result)
 }
 
 func (h *ToolHandlers) handleTrackersList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
