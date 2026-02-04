@@ -604,6 +604,7 @@ type CreateTimeEntryParams struct {
 	Hours      float64
 	ActivityID int
 	Comments   string
+	SpentOn    string // Date in YYYY-MM-DD format
 }
 
 // TimeEntry represents a time entry
@@ -655,6 +656,9 @@ func (c *Client) CreateTimeEntry(params CreateTimeEntryParams) (*TimeEntry, erro
 	}
 	if params.Comments != "" {
 		timeEntryData["comments"] = params.Comments
+	}
+	if params.SpentOn != "" {
+		timeEntryData["spent_on"] = params.SpentOn
 	}
 
 	data, err := c.doRequest("POST", "/time_entries.json", reqBody)

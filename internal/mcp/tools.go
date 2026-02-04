@@ -264,6 +264,9 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		mcp.WithString("comments",
 			mcp.Description("Comments"),
 		),
+		mcp.WithString("spent_on",
+			mcp.Description("Date the time was spent (YYYY-MM-DD format, defaults to today)"),
+		),
 	), h.handleTimeEntriesCreate)
 
 	s.AddTool(mcp.NewTool("timeEntries.list",
@@ -868,6 +871,7 @@ func (h *ToolHandlers) handleTimeEntriesCreate(ctx context.Context, req mcp.Call
 	}
 
 	params.Comments = req.GetString("comments", "")
+	params.SpentOn = req.GetString("spent_on", "")
 
 	entry, err := h.client.CreateTimeEntry(params)
 	if err != nil {

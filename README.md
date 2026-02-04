@@ -72,7 +72,7 @@ X-Redmine-API-Key: user-api-key
 - `projects.create` - Create new project
 
 ### Time Entries
-- `timeEntries.create` - Log time on issue
+- `timeEntries.create` - Log time on issue (supports `spent_on` for specifying date)
 - `timeEntries.list` - List time entries with filters (project, user, date range)
 - `timeEntries.report` - Generate aggregated time reports
 
@@ -302,9 +302,9 @@ When requesting more than 1000 records, the API times out after 30 seconds.
 ### Log Time Entry
 
 ```
-User: 幫我在 #12345 更新工時 2 小時
+User: Log 2 hours on #12345
 
-Claude: [Calls mcp__redmine__update-issue with issueId="12345", logHours=2]
+Claude: [Calls mcp__redmine__timeEntries_create with issue_id=12345, hours=2]
 
 Result:
 Time entry created:
@@ -315,6 +315,26 @@ Time entry created:
 | Hours      | 2                                  |
 | Activity   | Development                        |
 | Date       | 2026-02-01                         |
+| User       | john.doe                           |
+```
+
+### Log Time Entry for a Specific Date
+
+```
+User: Log 8 hours PTO for last Monday (2026-01-27) on #15481
+
+Claude: [Calls mcp__redmine__timeEntries_create with issue_id=15481, hours=8,
+         spent_on="2026-01-27", comments="PTO"]
+
+Result:
+Time entry created:
+| Field      | Value                              |
+|------------|------------------------------------|
+| Entry ID   | 56790                              |
+| Issue      | #15481 - PTO/Sick leave/Holiday    |
+| Hours      | 8                                  |
+| Activity   | Others                             |
+| Date       | 2026-01-27                         |
 | User       | john.doe                           |
 ```
 
