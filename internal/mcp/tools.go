@@ -234,6 +234,13 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleIssuesAddRelation)
 
+	// Custom Fields
+	s.AddTool(mcp.NewTool("customFields.list",
+		mcp.WithDescription("List custom fields available for a project/tracker"),
+		mcp.WithString("project", mcp.Required(), mcp.Description("Project name or ID")),
+		mcp.WithString("tracker", mcp.Description("Tracker name or ID (optional)")),
+	), h.handleCustomFieldsList)
+
 	// Time Entries
 	s.AddTool(mcp.NewTool("timeEntries.create",
 		mcp.WithDescription("Create a time entry for an issue"),
@@ -685,6 +692,55 @@ func (h *ToolHandlers) handleIssuesAddRelation(ctx context.Context, req mcp.Call
 		"issue_id":      relation.IssueID,
 		"issue_to_id":   relation.IssueToID,
 		"relation_type": relation.RelationType,
+	})
+}
+
+func (h *ToolHandlers) handleCustomFieldsList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projectStr, err := req.RequireString("project")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectID, err := h.resolver.ResolveProject(projectStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+	}
+
+	var trackerID int
+	if tracker := req.GetString("tracker", ""); tracker != "" {
+		trackerID, err = h.resolver.ResolveTracker(tracker)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve tracker: %v", err)), nil
+		}
+	}
+
+	fields, err := h.client.GetProjectCustomFields(projectID, trackerID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get custom fields: %v", err)), nil
+	}
+
+	// Format results
+	results := make([]map[string]any, len(fields))
+	for i, f := range fields {
+		results[i] = map[string]any{
+			"id":   f.ID,
+			"name": f.Name,
+		}
+		if f.FieldFormat != "" && f.FieldFormat != "unknown" {
+			results[i]["type"] = f.FieldFormat
+		}
+		if f.Required {
+			results[i]["required"] = true
+		}
+		if len(f.PossibleValues) > 0 {
+			results[i]["possible_values"] = f.PossibleValues
+		}
+	}
+
+	return jsonResult(map[string]any{
+		"project_id":    projectID,
+		"tracker_id":    trackerID,
+		"custom_fields": results,
 	})
 }
 
