@@ -122,24 +122,45 @@ type ProjectsResponse struct {
 	Limit      int       `json:"limit"`
 }
 
-// ListProjects returns all projects
+// ListProjects returns all projects with pagination support
 func (c *Client) ListProjects(limit int) ([]Project, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 
-	path := fmt.Sprintf("/projects.json?limit=%d", limit)
-	data, err := c.doRequest("GET", path, nil)
-	if err != nil {
-		return nil, err
+	var allProjects []Project
+	offset := 0
+	batchSize := 100 // Redmine typically limits to 100 per request
+
+	for {
+		path := fmt.Sprintf("/projects.json?limit=%d&offset=%d", batchSize, offset)
+		data, err := c.doRequest("GET", path, nil)
+		if err != nil {
+			return nil, err
+		}
+
+		var resp ProjectsResponse
+		if err := json.Unmarshal(data, &resp); err != nil {
+			return nil, fmt.Errorf("failed to parse response: %w", err)
+		}
+
+		allProjects = append(allProjects, resp.Projects...)
+
+		// Check if we've fetched all projects or reached the requested limit
+		// Use total_count for accurate pagination detection
+		if len(allProjects) >= resp.TotalCount || len(allProjects) >= limit || len(resp.Projects) == 0 {
+			break
+		}
+
+		offset += len(resp.Projects)
 	}
 
-	var resp ProjectsResponse
-	if err := json.Unmarshal(data, &resp); err != nil {
-		return nil, fmt.Errorf("failed to parse response: %w", err)
+	// Trim to requested limit if we fetched more
+	if len(allProjects) > limit {
+		allProjects = allProjects[:limit]
 	}
 
-	return resp.Projects, nil
+	return allProjects, nil
 }
 
 // CreateProjectRequest is the request body for creating a project

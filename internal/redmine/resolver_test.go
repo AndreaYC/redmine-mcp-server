@@ -53,6 +53,66 @@ func TestResolver_ResolveProject(t *testing.T) {
 	}
 }
 
+func TestResolver_ResolveProject_Pagination(t *testing.T) {
+	// Mock server that simulates pagination
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/projects.json" {
+			offset := r.URL.Query().Get("offset")
+			w.Header().Set("Content-Type", "application/json")
+
+			// Simulate paginated responses
+			switch offset {
+			case "", "0":
+				// First page
+				_, _ = w.Write([]byte(`{
+					"projects": [
+						{"id": 1, "name": "Project 1", "identifier": "project-1"},
+						{"id": 2, "name": "Project 2", "identifier": "project-2"}
+					],
+					"total_count": 4,
+					"offset": 0,
+					"limit": 100
+				}`))
+			case "2":
+				// Second page - contains the target project
+				_, _ = w.Write([]byte(`{
+					"projects": [
+						{"id": 1306, "name": "SKY Rack Mgmt Software", "identifier": "sky-rack"},
+						{"id": 1307, "name": "Other Project", "identifier": "other"}
+					],
+					"total_count": 4,
+					"offset": 2,
+					"limit": 100
+				}`))
+			default:
+				// No more projects
+				_, _ = w.Write([]byte(`{
+					"projects": [],
+					"total_count": 4,
+					"offset": 4,
+					"limit": 100
+				}`))
+			}
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "test-key")
+	resolver := NewResolver(client)
+
+	// Test that we can find a project from the second page
+	got, err := resolver.ResolveProject("SKY Rack Mgmt Software")
+	if err != nil {
+		t.Errorf("ResolveProject() error = %v, want nil", err)
+		return
+	}
+	if got != 1306 {
+		t.Errorf("ResolveProject() = %v, want 1306", got)
+	}
+}
+
 func TestResolver_ResolveTracker(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/trackers.json" {
