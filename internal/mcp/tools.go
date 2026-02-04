@@ -513,7 +513,11 @@ func (h *ToolHandlers) handleIssuesCreate(ctx context.Context, req mcp.CallToolR
 	params.DueDate = req.GetString("due_date", "")
 
 	if customFields := getMapArg(req, "custom_fields"); customFields != nil {
-		params.CustomFields = h.resolveCustomFields(customFields, projectID)
+		resolved, err := h.resolveCustomFields(customFields, projectID, trackerID)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		params.CustomFields = resolved
 	}
 
 	issue, err := h.client.CreateIssue(params)
@@ -560,7 +564,11 @@ func (h *ToolHandlers) handleIssuesUpdate(ctx context.Context, req mcp.CallToolR
 	params.Notes = req.GetString("notes", "")
 
 	if customFields := getMapArg(req, "custom_fields"); customFields != nil {
-		params.CustomFields = h.resolveCustomFields(customFields, issue.Project.ID)
+		resolved, err := h.resolveCustomFields(customFields, issue.Project.ID, issue.Tracker.ID)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		params.CustomFields = resolved
 	}
 
 	if err := h.client.UpdateIssue(params); err != nil {
@@ -618,7 +626,11 @@ func (h *ToolHandlers) handleIssuesCreateSubtask(ctx context.Context, req mcp.Ca
 	}
 
 	if customFields := getMapArg(req, "custom_fields"); customFields != nil {
-		params.CustomFields = h.resolveCustomFields(customFields, parent.Project.ID)
+		resolved, err := h.resolveCustomFields(customFields, parent.Project.ID, params.TrackerID)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		params.CustomFields = resolved
 	}
 
 	issue, err := h.client.CreateIssue(params)
@@ -1055,19 +1067,51 @@ func (h *ToolHandlers) handleActivitiesList(ctx context.Context, req mcp.CallToo
 
 // Helper functions
 
-func (h *ToolHandlers) resolveCustomFields(fields map[string]any, projectID int) map[string]any {
+// resolveCustomFields converts custom field names to IDs
+func (h *ToolHandlers) resolveCustomFields(fields map[string]any, projectID int, trackerID int) (map[string]any, error) {
 	result := make(map[string]any)
-	for name, value := range fields {
-		// Try to resolve field name to ID by checking a sample issue
-		// For now, just pass through - the API might accept field names
-		if id, err := strconv.Atoi(name); err == nil {
-			result[strconv.Itoa(id)] = value
-		} else {
-			// Keep the name, we'll need to resolve it
-			result[name] = value
+	var unknownFields []string
+
+	// Try to get custom field definitions for name resolution
+	definitions, defErr := h.client.GetProjectCustomFields(projectID, trackerID)
+	nameToID := make(map[string]int)
+	if defErr == nil {
+		for _, def := range definitions {
+			nameToID[strings.ToLower(def.Name)] = def.ID
 		}
 	}
-	return result
+
+	for key, value := range fields {
+		// Try to parse as numeric ID first
+		if id, err := strconv.Atoi(key); err == nil {
+			result[strconv.Itoa(id)] = value
+			continue
+		}
+
+		// Try to resolve name to ID
+		if id, ok := nameToID[strings.ToLower(key)]; ok {
+			result[strconv.Itoa(id)] = value
+			continue
+		}
+
+		// Unknown field
+		unknownFields = append(unknownFields, key)
+	}
+
+	if len(unknownFields) > 0 {
+		// Build helpful error message
+		availableFields := make([]string, 0, len(nameToID))
+		for name := range nameToID {
+			availableFields = append(availableFields, name)
+		}
+		sort.Strings(availableFields)
+
+		return nil, fmt.Errorf("custom field(s) not found: %s\nAvailable fields: %s",
+			strings.Join(unknownFields, ", "),
+			strings.Join(availableFields, ", "))
+	}
+
+	return result, nil
 }
 
 func formatIssue(issue redmine.Issue) map[string]any {
