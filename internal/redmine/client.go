@@ -31,7 +31,7 @@ func NewClient(baseURL, apiKey string) *Client {
 }
 
 // doRequest performs an HTTP request to the Redmine API
-func (c *Client) doRequest(method, path string, body interface{}) ([]byte, error) {
+func (c *Client) doRequest(method, path string, body any) ([]byte, error) {
 	var bodyReader io.Reader
 	if body != nil {
 		jsonBody, err := json.Marshal(body)
@@ -253,7 +253,7 @@ func (c *Client) ListTimeEntryActivities() ([]TimeEntryActivity, error) {
 type CustomField struct {
 	ID    int         `json:"id"`
 	Name  string      `json:"name"`
-	Value interface{} `json:"value"`
+	Value any `json:"value"`
 }
 
 // CustomFieldDefinition represents a custom field definition (not value)
@@ -415,20 +415,20 @@ type CreateIssueParams struct {
 	ParentIssueID int
 	StartDate     string
 	DueDate       string
-	CustomFields  map[string]interface{}
+	CustomFields  map[string]any
 }
 
 // CreateIssue creates a new issue
 func (c *Client) CreateIssue(params CreateIssueParams) (*Issue, error) {
-	reqBody := map[string]interface{}{
-		"issue": map[string]interface{}{
+	reqBody := map[string]any{
+		"issue": map[string]any{
 			"project_id": params.ProjectID,
 			"tracker_id": params.TrackerID,
 			"subject":    params.Subject,
 		},
 	}
 
-	issueData := reqBody["issue"].(map[string]interface{})
+	issueData := reqBody["issue"].(map[string]any)
 
 	if params.Description != "" {
 		issueData["description"] = params.Description
@@ -453,10 +453,10 @@ func (c *Client) CreateIssue(params CreateIssueParams) (*Issue, error) {
 	}
 
 	if len(params.CustomFields) > 0 {
-		customFields := make([]map[string]interface{}, 0)
+		customFields := make([]map[string]any, 0)
 		for id, value := range params.CustomFields {
 			cfID, _ := strconv.Atoi(id)
-			customFields = append(customFields, map[string]interface{}{
+			customFields = append(customFields, map[string]any{
 				"id":    cfID,
 				"value": value,
 			})
@@ -485,12 +485,12 @@ type UpdateIssueParams struct {
 	StatusID     int
 	AssignedToID int
 	Notes        string
-	CustomFields map[string]interface{}
+	CustomFields map[string]any
 }
 
 // UpdateIssue updates an existing issue
 func (c *Client) UpdateIssue(params UpdateIssueParams) error {
-	issueData := make(map[string]interface{})
+	issueData := make(map[string]any)
 
 	if params.StatusID > 0 {
 		issueData["status_id"] = params.StatusID
@@ -503,10 +503,10 @@ func (c *Client) UpdateIssue(params UpdateIssueParams) error {
 	}
 
 	if len(params.CustomFields) > 0 {
-		customFields := make([]map[string]interface{}, 0)
+		customFields := make([]map[string]any, 0)
 		for id, value := range params.CustomFields {
 			cfID, _ := strconv.Atoi(id)
-			customFields = append(customFields, map[string]interface{}{
+			customFields = append(customFields, map[string]any{
 				"id":    cfID,
 				"value": value,
 			})
@@ -514,7 +514,7 @@ func (c *Client) UpdateIssue(params UpdateIssueParams) error {
 		issueData["custom_fields"] = customFields
 	}
 
-	reqBody := map[string]interface{}{
+	reqBody := map[string]any{
 		"issue": issueData,
 	}
 
@@ -525,7 +525,7 @@ func (c *Client) UpdateIssue(params UpdateIssueParams) error {
 
 // AddWatcher adds a watcher to an issue
 func (c *Client) AddWatcher(issueID, userID int) error {
-	reqBody := map[string]interface{}{
+	reqBody := map[string]any{
 		"user_id": userID,
 	}
 
@@ -536,8 +536,8 @@ func (c *Client) AddWatcher(issueID, userID int) error {
 
 // CreateRelation creates a relation between issues
 func (c *Client) CreateRelation(issueID, issueToID int, relationType string) (*Relation, error) {
-	reqBody := map[string]interface{}{
-		"relation": map[string]interface{}{
+	reqBody := map[string]any{
+		"relation": map[string]any{
 			"issue_to_id":   issueToID,
 			"relation_type": relationType,
 		},
@@ -620,14 +620,14 @@ type TimeEntriesResponse struct {
 
 // CreateTimeEntry creates a new time entry
 func (c *Client) CreateTimeEntry(params CreateTimeEntryParams) (*TimeEntry, error) {
-	reqBody := map[string]interface{}{
-		"time_entry": map[string]interface{}{
+	reqBody := map[string]any{
+		"time_entry": map[string]any{
 			"issue_id": params.IssueID,
 			"hours":    params.Hours,
 		},
 	}
 
-	timeEntryData := reqBody["time_entry"].(map[string]interface{})
+	timeEntryData := reqBody["time_entry"].(map[string]any)
 
 	if params.ActivityID > 0 {
 		timeEntryData["activity_id"] = params.ActivityID
