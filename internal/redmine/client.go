@@ -256,6 +256,15 @@ type CustomField struct {
 	Value interface{} `json:"value"`
 }
 
+// CustomFieldDefinition represents a custom field definition (not value)
+type CustomFieldDefinition struct {
+	ID             int      `json:"id"`
+	Name           string   `json:"name"`
+	FieldFormat    string   `json:"field_format"`
+	Required       bool     `json:"required,omitempty"`
+	PossibleValues []string `json:"possible_values,omitempty"`
+}
+
 // Issue represents a Redmine issue
 type Issue struct {
 	ID          int     `json:"id"`
@@ -717,4 +726,49 @@ func (c *Client) GetProjectMemberships(projectID int, limit int) ([]ProjectMembe
 	}
 
 	return resp.Memberships, nil
+}
+
+// GetProjectCustomFields returns custom fields available for a project/tracker
+// by examining issues in that project (works without admin rights)
+func (c *Client) GetProjectCustomFields(projectID int, trackerID int) ([]CustomFieldDefinition, error) {
+	// Search for an issue in this project/tracker to extract custom field definitions
+	query := url.Values{}
+	query.Set("project_id", strconv.Itoa(projectID))
+	if trackerID > 0 {
+		query.Set("tracker_id", strconv.Itoa(trackerID))
+	}
+	query.Set("limit", "1")
+
+	path := "/issues.json?" + query.Encode()
+	data, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp IssuesResponse
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if len(resp.Issues) == 0 {
+		return nil, fmt.Errorf("no issues found in project to extract custom fields")
+	}
+
+	// Get full issue details to see custom fields
+	issue, err := c.GetIssue(resp.Issues[0].ID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Convert custom field values to definitions
+	definitions := make([]CustomFieldDefinition, len(issue.CustomFields))
+	for i, cf := range issue.CustomFields {
+		definitions[i] = CustomFieldDefinition{
+			ID:          cf.ID,
+			Name:        cf.Name,
+			FieldFormat: "unknown", // We can't determine this from issue data
+		}
+	}
+
+	return definitions, nil
 }
