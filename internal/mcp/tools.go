@@ -234,6 +234,12 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleIssuesAddRelation)
 
+	s.AddTool(mcp.NewTool("issues.getRequiredFields",
+		mcp.WithDescription("Get required fields for creating an issue in a project/tracker"),
+		mcp.WithString("project", mcp.Required(), mcp.Description("Project name or ID")),
+		mcp.WithString("tracker", mcp.Required(), mcp.Description("Tracker name or ID")),
+	), h.handleIssuesGetRequiredFields)
+
 	// Custom Fields
 	s.AddTool(mcp.NewTool("customFields.list",
 		mcp.WithDescription("List custom fields available for a project/tracker"),
@@ -704,6 +710,86 @@ func (h *ToolHandlers) handleIssuesAddRelation(ctx context.Context, req mcp.Call
 		"issue_id":      relation.IssueID,
 		"issue_to_id":   relation.IssueToID,
 		"relation_type": relation.RelationType,
+	})
+}
+
+func (h *ToolHandlers) handleIssuesGetRequiredFields(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projectStr, err := req.RequireString("project")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	trackerStr, err := req.RequireString("tracker")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectID, err := h.resolver.ResolveProject(projectStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+	}
+
+	trackerID, err := h.resolver.ResolveTracker(trackerStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve tracker: %v", err)), nil
+	}
+
+	// Get project and tracker names for response
+	projects, _ := h.client.ListProjects(100)
+	trackers, _ := h.client.ListTrackers()
+
+	var projectName, trackerName string
+	for _, p := range projects {
+		if p.ID == projectID {
+			projectName = p.Name
+			break
+		}
+	}
+	for _, t := range trackers {
+		if t.ID == trackerID {
+			trackerName = t.Name
+			break
+		}
+	}
+
+	// Get custom fields
+	customFields, err := h.client.GetProjectCustomFields(projectID, trackerID)
+	if err != nil {
+		// Return partial result even if custom fields unavailable
+		return jsonResult(map[string]any{
+			"project": projectName,
+			"tracker": trackerName,
+			"required": map[string]any{
+				"standard": []string{"subject"},
+				"custom":   []any{},
+			},
+			"note": "Could not retrieve custom fields: " + err.Error(),
+		})
+	}
+
+	// Format custom fields
+	customFieldsList := make([]map[string]any, 0)
+	for _, cf := range customFields {
+		field := map[string]any{
+			"id":   cf.ID,
+			"name": cf.Name,
+		}
+		if cf.FieldFormat != "" && cf.FieldFormat != "unknown" {
+			field["type"] = cf.FieldFormat
+		}
+		if len(cf.PossibleValues) > 0 {
+			field["possible_values"] = cf.PossibleValues
+		}
+		customFieldsList = append(customFieldsList, field)
+	}
+
+	return jsonResult(map[string]any{
+		"project": projectName,
+		"tracker": trackerName,
+		"required": map[string]any{
+			"standard": []string{"subject"},
+			"custom":   customFieldsList,
+		},
+		"note": "Custom fields shown are available for this project/tracker. Required status cannot be determined without admin access - try creating the issue and check error messages.",
 	})
 }
 
