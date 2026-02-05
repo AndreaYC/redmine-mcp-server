@@ -346,10 +346,11 @@ type Issue struct {
 	Parent      *struct {
 		ID int `json:"id"`
 	} `json:"parent,omitempty"`
-	CustomFields []CustomField `json:"custom_fields,omitempty"`
-	Journals     []Journal     `json:"journals,omitempty"`
-	Watchers     []IDName      `json:"watchers,omitempty"`
-	Relations    []Relation    `json:"relations,omitempty"`
+	CustomFields    []CustomField `json:"custom_fields,omitempty"`
+	Journals        []Journal     `json:"journals,omitempty"`
+	Watchers        []IDName      `json:"watchers,omitempty"`
+	Relations       []Relation    `json:"relations,omitempty"`
+	AllowedStatuses []IDName      `json:"allowed_statuses,omitempty"`
 }
 
 // IDName represents a simple id/name pair
@@ -448,7 +449,7 @@ func (c *Client) SearchIssues(params SearchIssuesParams) ([]Issue, int, error) {
 
 // GetIssue returns an issue by ID with optional includes
 func (c *Client) GetIssue(issueID int) (*Issue, error) {
-	path := fmt.Sprintf("/issues/%d.json?include=journals,watchers,relations", issueID)
+	path := fmt.Sprintf("/issues/%d.json?include=journals,watchers,relations,allowed_statuses", issueID)
 	data, err := c.doRequest("GET", path, nil)
 	if err != nil {
 		return nil, err

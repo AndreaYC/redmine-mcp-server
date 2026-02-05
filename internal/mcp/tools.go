@@ -1541,6 +1541,18 @@ func formatIssueDetail(issue redmine.Issue) map[string]any {
 		result["relations"] = relations
 	}
 
+	// Allowed status transitions
+	if len(issue.AllowedStatuses) > 0 {
+		statuses := make([]map[string]any, len(issue.AllowedStatuses))
+		for i, s := range issue.AllowedStatuses {
+			statuses[i] = map[string]any{
+				"id":   s.ID,
+				"name": s.Name,
+			}
+		}
+		result["allowed_statuses"] = statuses
+	}
+
 	return result
 }
 
