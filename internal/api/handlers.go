@@ -363,7 +363,12 @@ func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) {
 	params.DueDate = req.DueDate
 
 	if req.CustomFields != nil {
-		params.CustomFields = resolveCustomFieldsAPI(req.CustomFields)
+		resolved, err := resolveCustomFieldsAPI(req.CustomFields, s.rules)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		params.CustomFields = resolved
 	}
 
 	issue, err := client.CreateIssue(params)
@@ -443,7 +448,12 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.CustomFields != nil {
-		params.CustomFields = resolveCustomFieldsAPI(req.CustomFields)
+		resolved, err := resolveCustomFieldsAPI(req.CustomFields, s.rules)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		params.CustomFields = resolved
 	}
 
 	if err := client.UpdateIssue(params); err != nil {
@@ -533,7 +543,12 @@ func (s *Server) handleCreateSubtask(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.CustomFields != nil {
-		params.CustomFields = resolveCustomFieldsAPI(req.CustomFields)
+		resolved, err := resolveCustomFieldsAPI(req.CustomFields, s.rules)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		params.CustomFields = resolved
 	}
 
 	issue, err := client.CreateIssue(params)
@@ -1143,14 +1158,24 @@ func formatIssueDetailAPI(issue redmine.Issue) map[string]any {
 	return result
 }
 
-func resolveCustomFieldsAPI(fields map[string]any) map[string]any {
+func resolveCustomFieldsAPI(fields map[string]any, rules *redmine.CustomFieldRules) (map[string]any, error) {
 	result := make(map[string]any)
 	for name, value := range fields {
 		if id, err := strconv.Atoi(name); err == nil {
+			// Validate value if rules exist
+			if rules != nil {
+				if s, ok := value.(string); ok {
+					corrected, verr := rules.ValidateValue(id, s)
+					if verr != nil {
+						return nil, verr
+					}
+					value = corrected
+				}
+			}
 			result[strconv.Itoa(id)] = value
 		} else {
 			result[name] = value
 		}
 	}
-	return result
+	return result, nil
 }

@@ -19,10 +19,11 @@ const (
 
 // Config holds MCP server configuration
 type Config struct {
-	RedmineURL    string
-	RedmineAPIKey string
-	Port          int
-	SSEMode       bool
+	RedmineURL           string
+	RedmineAPIKey        string
+	Port                 int
+	SSEMode              bool
+	CustomFieldRulesFile string
 }
 
 // Server wraps the MCP server
@@ -55,7 +56,8 @@ func (s *Server) Run() error {
 
 	// Stdio mode - use env var for API key
 	client := redmine.NewClient(s.config.RedmineURL, s.config.RedmineAPIKey)
-	s.handler = NewToolHandlers(client)
+	rules := s.loadCustomFieldRules()
+	s.handler = NewToolHandlers(client, rules)
 	s.handler.RegisterTools(s.mcp)
 
 	slog.Info("Starting MCP server in stdio mode",
@@ -63,6 +65,22 @@ func (s *Server) Run() error {
 	)
 
 	return server.ServeStdio(s.mcp)
+}
+
+// loadCustomFieldRules loads custom field validation rules from the configured file
+func (s *Server) loadCustomFieldRules() *redmine.CustomFieldRules {
+	if s.config.CustomFieldRulesFile == "" {
+		return nil
+	}
+	rules, err := redmine.LoadCustomFieldRules(s.config.CustomFieldRulesFile)
+	if err != nil {
+		slog.Warn("Failed to load custom field rules", "file", s.config.CustomFieldRulesFile, "error", err)
+		return nil
+	}
+	if rules != nil {
+		slog.Info("Loaded custom field rules", "file", s.config.CustomFieldRulesFile, "fields", len(rules.Fields))
+	}
+	return rules
 }
 
 // runSSE starts the server in SSE mode
@@ -75,7 +93,8 @@ func (s *Server) runSSE() error {
 	)
 
 	// Create session manager for multi-tenant SSE
-	sessionMgr := newSessionManager(s.config.RedmineURL)
+	rules := s.loadCustomFieldRules()
+	sessionMgr := newSessionManager(s.config.RedmineURL, rules)
 
 	// Rate limiter: 100 requests per minute per IP
 	rateLimiter := newSimpleRateLimiter(100, time.Minute)
@@ -99,12 +118,14 @@ type sessionManager struct {
 	mu         sync.RWMutex
 	servers    map[string]*server.SSEServer // API key -> SSE server
 	redmineURL string
+	rules      *redmine.CustomFieldRules
 }
 
-func newSessionManager(redmineURL string) *sessionManager {
+func newSessionManager(redmineURL string, rules *redmine.CustomFieldRules) *sessionManager {
 	return &sessionManager{
 		servers:    make(map[string]*server.SSEServer),
 		redmineURL: redmineURL,
+		rules:      rules,
 	}
 }
 
@@ -135,7 +156,7 @@ func (m *sessionManager) getOrCreateServer(apiKey string) *server.SSEServer {
 	)
 
 	// Register tools
-	handler := NewToolHandlers(client)
+	handler := NewToolHandlers(client, m.rules)
 	handler.RegisterTools(mcpServer)
 
 	// Create SSE server

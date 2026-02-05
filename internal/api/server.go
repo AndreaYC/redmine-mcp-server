@@ -16,8 +16,9 @@ import (
 
 // Config holds API server configuration
 type Config struct {
-	RedmineURL string
-	Port       int
+	RedmineURL           string
+	Port                 int
+	CustomFieldRulesFile string
 }
 
 // Server is the REST API server
@@ -25,14 +26,27 @@ type Server struct {
 	config      Config
 	router      *chi.Mux
 	rateLimiter *RateLimiter
+	rules       *redmine.CustomFieldRules
 }
 
 // NewServer creates a new API server
 func NewServer(config Config) *Server {
+	var rules *redmine.CustomFieldRules
+	if config.CustomFieldRulesFile != "" {
+		var err error
+		rules, err = redmine.LoadCustomFieldRules(config.CustomFieldRulesFile)
+		if err != nil {
+			slog.Warn("Failed to load custom field rules", "file", config.CustomFieldRulesFile, "error", err)
+		} else if rules != nil {
+			slog.Info("Loaded custom field rules", "file", config.CustomFieldRulesFile, "fields", len(rules.Fields))
+		}
+	}
+
 	s := &Server{
 		config:      config,
 		router:      chi.NewRouter(),
 		rateLimiter: NewRateLimiter(100, time.Second, 200), // 100 req/sec, burst 200
+		rules:       rules,
 	}
 
 	s.setupRoutes()

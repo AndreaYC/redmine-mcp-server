@@ -14,9 +14,10 @@ var (
 	version = "1.0.0"
 
 	// Global flags
-	redmineURL string
-	port       int
-	logLevel   string
+	redmineURL           string
+	port                 int
+	logLevel             string
+	customFieldRulesFile string
 )
 
 func main() {
@@ -33,6 +34,7 @@ func main() {
 	rootCmd.PersistentFlags().StringVar(&redmineURL, "redmine-url", os.Getenv("REDMINE_URL"), "Redmine server URL")
 	rootCmd.PersistentFlags().IntVar(&port, "port", 8080, "Server port (for SSE and API modes)")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
+	rootCmd.PersistentFlags().StringVar(&customFieldRulesFile, "custom-field-rules", os.Getenv("CUSTOM_FIELD_RULES_FILE"), "Path to custom field validation rules JSON file")
 
 	// MCP command
 	mcpCmd := &cobra.Command{
@@ -88,10 +90,11 @@ func runMCP(cmd *cobra.Command, args []string) error {
 	sseMode, _ := cmd.Flags().GetBool("sse")
 
 	config := mcp.Config{
-		RedmineURL:    redmineURL,
-		RedmineAPIKey: os.Getenv("REDMINE_API_KEY"),
-		Port:          port,
-		SSEMode:       sseMode,
+		RedmineURL:           redmineURL,
+		RedmineAPIKey:        os.Getenv("REDMINE_API_KEY"),
+		Port:                 port,
+		SSEMode:              sseMode,
+		CustomFieldRulesFile: customFieldRulesFile,
 	}
 
 	if !sseMode && config.RedmineAPIKey == "" {
@@ -108,8 +111,9 @@ func runAPI(cmd *cobra.Command, args []string) error {
 	}
 
 	config := api.Config{
-		RedmineURL: redmineURL,
-		Port:       port,
+		RedmineURL:           redmineURL,
+		Port:                 port,
+		CustomFieldRulesFile: customFieldRulesFile,
 	}
 
 	server := api.NewServer(config)

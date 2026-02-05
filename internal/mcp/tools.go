@@ -53,13 +53,15 @@ func resolveDatePeriod(period string) (from, to string) {
 type ToolHandlers struct {
 	client   *redmine.Client
 	resolver *redmine.Resolver
+	rules    *redmine.CustomFieldRules
 }
 
 // NewToolHandlers creates new tool handlers
-func NewToolHandlers(client *redmine.Client) *ToolHandlers {
+func NewToolHandlers(client *redmine.Client, rules *redmine.CustomFieldRules) *ToolHandlers {
 	return &ToolHandlers{
 		client:   client,
 		resolver: redmine.NewResolver(client),
+		rules:    rules,
 	}
 }
 
@@ -1403,20 +1405,26 @@ func (h *ToolHandlers) resolveCustomFields(fields map[string]any, projectID int,
 	}
 
 	for key, value := range fields {
+		var fieldID int
+
 		// Try to parse as numeric ID first
 		if id, err := strconv.Atoi(key); err == nil {
-			result[strconv.Itoa(id)] = value
+			fieldID = id
+		} else if id, ok := nameToID[strings.ToLower(key)]; ok {
+			// Resolve name to ID
+			fieldID = id
+		} else {
+			// Unknown field
+			unknownFields = append(unknownFields, key)
 			continue
 		}
 
-		// Try to resolve name to ID
-		if id, ok := nameToID[strings.ToLower(key)]; ok {
-			result[strconv.Itoa(id)] = value
-			continue
+		// Validate value against rules
+		validated, err := h.validateCustomFieldValue(fieldID, value)
+		if err != nil {
+			return nil, err
 		}
-
-		// Unknown field
-		unknownFields = append(unknownFields, key)
+		result[strconv.Itoa(fieldID)] = validated
 	}
 
 	if len(unknownFields) > 0 {
@@ -1433,6 +1441,35 @@ func (h *ToolHandlers) resolveCustomFields(fields map[string]any, projectID int,
 	}
 
 	return result, nil
+}
+
+// validateCustomFieldValue validates and auto-corrects a custom field value.
+// Handles both single string values and array values (multi-select fields).
+func (h *ToolHandlers) validateCustomFieldValue(fieldID int, value any) (any, error) {
+	if h.rules == nil {
+		return value, nil
+	}
+
+	switch v := value.(type) {
+	case string:
+		return h.rules.ValidateValue(fieldID, v)
+	case []any:
+		result := make([]any, len(v))
+		for i, item := range v {
+			if s, ok := item.(string); ok {
+				corrected, err := h.rules.ValidateValue(fieldID, s)
+				if err != nil {
+					return nil, err
+				}
+				result[i] = corrected
+			} else {
+				result[i] = item
+			}
+		}
+		return result, nil
+	default:
+		return value, nil
+	}
 }
 
 func formatIssue(issue redmine.Issue) map[string]any {

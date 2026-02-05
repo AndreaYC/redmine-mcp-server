@@ -1,0 +1,56 @@
+{
+  "fields": {
+    "23": {
+      "name": "Component",
+      "values": [
+        "(none)",
+        "HW",
+        "FPGA",
+        "IPMI",
+        "BIOS",
+        "Operating System",
+        "SW Tool",
+        "Signal",
+        "Power",
+        "LAB",
+        "Spec Definition",
+        "Mechanical",
+        "System",
+        "Intel/AMD Security",
+        "Intel_ME",
+        "Manufacturing",
+        "DFM_Check",
+        "SHMM",
+        "EC",
+        "FW",
+        "Unknown",
+        "3rd Party",
+        "Platform w/ OS Compatibility",
+        "BMC",
+        "Test Fixture & Environment",
+        "Thermal",
+        "Chipset/Chip Vendor",
+        "Other",
+        "Special Usage",
+        "TPL"
+      ]
+    },
+    "223": {
+      "name": "SW_Category",
+      "values": [
+        "Planning(Pre-study & CRB evaluation & GID preparation)",
+        "Schematic review",
+        "Bring up",
+        "Implement (Design & Validation)",
+        "Document writing",
+        "Debug",
+        "Customize",
+        "Internal support",
+        "Customer support",
+        "MFG",
+        "Maintain",
+        "Other"
+      ]
+    }
+  }
+}
