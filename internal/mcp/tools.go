@@ -118,8 +118,29 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		mcp.WithString("subject",
 			mcp.Description("Search keyword in issue subject (partial match)"),
 		),
+		mcp.WithNumber("parent_id",
+			mcp.Description("Parent issue ID (find subtasks)"),
+		),
+		mcp.WithString("updated_after",
+			mcp.Description("Only issues updated on or after this date (YYYY-MM-DD)"),
+		),
+		mcp.WithString("updated_before",
+			mcp.Description("Only issues updated on or before this date (YYYY-MM-DD)"),
+		),
+		mcp.WithString("created_after",
+			mcp.Description("Only issues created on or after this date (YYYY-MM-DD)"),
+		),
+		mcp.WithString("created_before",
+			mcp.Description("Only issues created on or before this date (YYYY-MM-DD)"),
+		),
+		mcp.WithString("sort",
+			mcp.Description("Sort order (e.g., 'updated_on:desc', 'priority:desc', 'created_on:asc')"),
+		),
 		mcp.WithNumber("limit",
 			mcp.Description("Number of issues to return (default: 25)"),
+		),
+		mcp.WithNumber("offset",
+			mcp.Description("Offset for pagination (default: 0)"),
 		),
 	), h.handleIssuesSearch)
 
@@ -163,6 +184,9 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		mcp.WithObject("custom_fields",
 			mcp.Description("Custom fields as key-value pairs (field name -> value)"),
 		),
+		mcp.WithBoolean("is_private",
+			mcp.Description("Whether the issue is private"),
+		),
 	), h.handleIssuesCreate)
 
 	s.AddTool(mcp.NewTool("issues.update",
@@ -171,11 +195,29 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Required(),
 			mcp.Description("Issue ID"),
 		),
+		mcp.WithString("subject",
+			mcp.Description("New subject/title"),
+		),
+		mcp.WithString("description",
+			mcp.Description("New description"),
+		),
 		mcp.WithString("status",
 			mcp.Description("New status name or ID"),
 		),
+		mcp.WithString("priority",
+			mcp.Description("New priority name or ID (e.g., Low, Normal, High, Urgent, Immediate)"),
+		),
+		mcp.WithString("tracker",
+			mcp.Description("New tracker name or ID"),
+		),
 		mcp.WithString("assigned_to",
 			mcp.Description("New assignee name or ID"),
+		),
+		mcp.WithString("start_date",
+			mcp.Description("Start date (YYYY-MM-DD)"),
+		),
+		mcp.WithString("due_date",
+			mcp.Description("Due date (YYYY-MM-DD)"),
 		),
 		mcp.WithString("notes",
 			mcp.Description("Notes/comment to add"),
@@ -185,6 +227,9 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 		mcp.WithObject("custom_fields",
 			mcp.Description("Custom fields to update as key-value pairs"),
+		),
+		mcp.WithBoolean("is_private",
+			mcp.Description("Whether the issue is private"),
 		),
 	), h.handleIssuesUpdate)
 
@@ -492,7 +537,36 @@ func (h *ToolHandlers) handleIssuesSearch(ctx context.Context, req mcp.CallToolR
 	// Subject keyword search
 	params.Subject = req.GetString("subject", "")
 
+	params.ParentID = req.GetInt("parent_id", 0)
+
+	// Date filters: convert user-friendly params to Redmine filter syntax
+	if after := req.GetString("updated_after", ""); after != "" {
+		params.UpdatedOn = ">=" + after
+	}
+	if before := req.GetString("updated_before", ""); before != "" {
+		if params.UpdatedOn != "" {
+			// Both after and before: use range syntax "><start|end"
+			after := req.GetString("updated_after", "")
+			params.UpdatedOn = "><" + after + "|" + before
+		} else {
+			params.UpdatedOn = "<=" + before
+		}
+	}
+	if after := req.GetString("created_after", ""); after != "" {
+		params.CreatedOn = ">=" + after
+	}
+	if before := req.GetString("created_before", ""); before != "" {
+		if params.CreatedOn != "" {
+			after := req.GetString("created_after", "")
+			params.CreatedOn = "><" + after + "|" + before
+		} else {
+			params.CreatedOn = "<=" + before
+		}
+	}
+
+	params.Sort = req.GetString("sort", "")
 	params.Limit = req.GetInt("limit", 25)
+	params.Offset = req.GetInt("offset", 0)
 
 	issues, total, err := h.client.SearchIssues(params)
 	if err != nil {
@@ -585,6 +659,14 @@ func (h *ToolHandlers) handleIssuesCreate(ctx context.Context, req mcp.CallToolR
 	params.StartDate = req.GetString("start_date", "")
 	params.DueDate = req.GetString("due_date", "")
 
+	if args := req.GetArguments(); args != nil {
+		if v, ok := args["is_private"]; ok {
+			if b, ok := v.(bool); ok {
+				params.IsPrivate = &b
+			}
+		}
+	}
+
 	if customFields := getMapArg(req, "custom_fields"); customFields != nil {
 		resolved, err := h.resolveCustomFields(customFields, projectID, trackerID)
 		if err != nil {
@@ -618,6 +700,27 @@ func (h *ToolHandlers) handleIssuesUpdate(ctx context.Context, req mcp.CallToolR
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to get issue: %v", err)), nil
 	}
 
+	params.Subject = req.GetString("subject", "")
+	params.Description = req.GetString("description", "")
+	params.StartDate = req.GetString("start_date", "")
+	params.DueDate = req.GetString("due_date", "")
+
+	if priority := req.GetString("priority", ""); priority != "" {
+		priorityID, err := h.resolver.ResolvePriority(priority)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve priority: %v", err)), nil
+		}
+		params.PriorityID = priorityID
+	}
+
+	if tracker := req.GetString("tracker", ""); tracker != "" {
+		trackerID, err := h.resolver.ResolveTracker(tracker)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve tracker: %v", err)), nil
+		}
+		params.TrackerID = trackerID
+	}
+
 	if status := req.GetString("status", ""); status != "" {
 		statusID, err := h.resolver.ResolveStatusID(status)
 		if err != nil {
@@ -639,12 +742,17 @@ func (h *ToolHandlers) handleIssuesUpdate(ctx context.Context, req mcp.CallToolR
 
 	params.Notes = req.GetString("notes", "")
 
-	// done_ratio: check if explicitly provided (0 is a valid value)
+	// done_ratio and is_private: check if explicitly provided
 	if args := req.GetArguments(); args != nil {
 		if v, ok := args["done_ratio"]; ok {
 			if f, ok := v.(float64); ok {
 				ratio := int(f)
 				params.DoneRatio = &ratio
+			}
+		}
+		if v, ok := args["is_private"]; ok {
+			if b, ok := v.(bool); ok {
+				params.IsPrivate = &b
 			}
 		}
 	}

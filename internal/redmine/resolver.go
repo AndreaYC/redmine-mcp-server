@@ -13,6 +13,7 @@ type Resolver struct {
 	// Cached data
 	trackers     []Tracker
 	statuses     []IssueStatus
+	priorities   []IssuePriority
 	projects     []Project
 	activities   []TimeEntryActivity
 	customFields []CustomFieldDefinitionFull
@@ -222,6 +223,46 @@ func (r *Resolver) ResolveStatusID(nameOrID string) (int, error) {
 	}
 	if len(matches) > 1 {
 		return 0, &ResolveError{Type: "status", Query: nameOrID, Matches: matches}
+	}
+
+	return matches[0].ID, nil
+}
+
+// ResolvePriority resolves a priority name or ID to a priority ID
+func (r *Resolver) ResolvePriority(nameOrID string) (int, error) {
+	if id, err := strconv.Atoi(nameOrID); err == nil {
+		return id, nil
+	}
+
+	if r.priorities == nil {
+		priorities, err := r.client.ListIssuePriorities()
+		if err != nil {
+			return 0, fmt.Errorf("failed to load priorities: %w", err)
+		}
+		r.priorities = priorities
+	}
+
+	query := strings.ToLower(nameOrID)
+	var matches []IDName
+	for _, p := range r.priorities {
+		if strings.ToLower(p.Name) == query {
+			matches = append(matches, IDName{ID: p.ID, Name: p.Name})
+		}
+	}
+
+	if len(matches) == 0 {
+		for _, p := range r.priorities {
+			if strings.Contains(strings.ToLower(p.Name), query) {
+				matches = append(matches, IDName{ID: p.ID, Name: p.Name})
+			}
+		}
+	}
+
+	if len(matches) == 0 {
+		return 0, &ResolveError{Type: "priority", Query: nameOrID, NotFound: true}
+	}
+	if len(matches) > 1 {
+		return 0, &ResolveError{Type: "priority", Query: nameOrID, Matches: matches}
 	}
 
 	return matches[0].ID, nil

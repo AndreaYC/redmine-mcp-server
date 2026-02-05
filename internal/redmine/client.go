@@ -270,6 +270,31 @@ func (c *Client) ListTimeEntryActivities() ([]TimeEntryActivity, error) {
 	return resp.TimeEntryActivities, nil
 }
 
+// IssuePriority represents a Redmine issue priority
+type IssuePriority struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	IsDefault bool   `json:"is_default"`
+	Active    bool   `json:"active"`
+}
+
+// ListIssuePriorities returns all issue priorities
+func (c *Client) ListIssuePriorities() ([]IssuePriority, error) {
+	data, err := c.doRequest("GET", "/enumerations/issue_priorities.json", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		IssuePriorities []IssuePriority `json:"issue_priorities"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return resp.IssuePriorities, nil
+}
+
 // CustomField represents a custom field value
 type CustomField struct {
 	ID    int         `json:"id"`
@@ -400,6 +425,10 @@ type SearchIssuesParams struct {
 	StatusID     string // "open", "closed", "*", or specific status ID
 	AssignedToID string // "me" or user ID
 	Subject      string // Search keyword for subject (partial match)
+	ParentID     int
+	CreatedOn    string // Redmine date filter, e.g., ">=2024-01-01"
+	UpdatedOn    string // Redmine date filter, e.g., ">=2024-01-01"
+	Sort         string // Sort order, e.g., "updated_on:desc"
 	Limit        int
 	Offset       int
 }
@@ -423,6 +452,18 @@ func (c *Client) SearchIssues(params SearchIssuesParams) ([]Issue, int, error) {
 	if params.Subject != "" {
 		// Use ~keyword for partial match (contains)
 		query.Set("subject", "~"+params.Subject)
+	}
+	if params.ParentID > 0 {
+		query.Set("parent_id", strconv.Itoa(params.ParentID))
+	}
+	if params.CreatedOn != "" {
+		query.Set("created_on", params.CreatedOn)
+	}
+	if params.UpdatedOn != "" {
+		query.Set("updated_on", params.UpdatedOn)
+	}
+	if params.Sort != "" {
+		query.Set("sort", params.Sort)
 	}
 	if params.Limit > 0 {
 		query.Set("limit", strconv.Itoa(params.Limit))
@@ -477,6 +518,7 @@ type CreateIssueParams struct {
 	ParentIssueID int
 	StartDate     string
 	DueDate       string
+	IsPrivate     *bool
 	CustomFields  map[string]any
 }
 
@@ -513,6 +555,9 @@ func (c *Client) CreateIssue(params CreateIssueParams) (*Issue, error) {
 	if params.DueDate != "" {
 		issueData["due_date"] = params.DueDate
 	}
+	if params.IsPrivate != nil {
+		issueData["is_private"] = *params.IsPrivate
+	}
 
 	if len(params.CustomFields) > 0 {
 		customFields := make([]map[string]any, 0)
@@ -544,9 +589,16 @@ func (c *Client) CreateIssue(params CreateIssueParams) (*Issue, error) {
 // UpdateIssueParams are parameters for updating an issue
 type UpdateIssueParams struct {
 	IssueID      int
+	Subject      string
+	Description  string
 	StatusID     int
+	PriorityID   int
+	TrackerID    int
 	AssignedToID int
+	StartDate    string
+	DueDate      string
 	DoneRatio    *int // nil = don't change, 0-100 = set value
+	IsPrivate    *bool
 	Notes        string
 	CustomFields map[string]any
 }
@@ -555,14 +607,35 @@ type UpdateIssueParams struct {
 func (c *Client) UpdateIssue(params UpdateIssueParams) error {
 	issueData := make(map[string]any)
 
+	if params.Subject != "" {
+		issueData["subject"] = params.Subject
+	}
+	if params.Description != "" {
+		issueData["description"] = params.Description
+	}
 	if params.StatusID > 0 {
 		issueData["status_id"] = params.StatusID
+	}
+	if params.PriorityID > 0 {
+		issueData["priority_id"] = params.PriorityID
+	}
+	if params.TrackerID > 0 {
+		issueData["tracker_id"] = params.TrackerID
 	}
 	if params.AssignedToID > 0 {
 		issueData["assigned_to_id"] = params.AssignedToID
 	}
+	if params.StartDate != "" {
+		issueData["start_date"] = params.StartDate
+	}
+	if params.DueDate != "" {
+		issueData["due_date"] = params.DueDate
+	}
 	if params.DoneRatio != nil {
 		issueData["done_ratio"] = *params.DoneRatio
+	}
+	if params.IsPrivate != nil {
+		issueData["is_private"] = *params.IsPrivate
 	}
 	if params.Notes != "" {
 		issueData["notes"] = params.Notes

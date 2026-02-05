@@ -240,9 +240,45 @@ func (s *Server) handleSearchIssues(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	if parentID := q.Get("parent_id"); parentID != "" {
+		if n, err := strconv.Atoi(parentID); err == nil {
+			params.ParentID = n
+		}
+	}
+
+	if after := q.Get("updated_after"); after != "" {
+		params.UpdatedOn = ">=" + after
+	}
+	if before := q.Get("updated_before"); before != "" {
+		if params.UpdatedOn != "" {
+			after := q.Get("updated_after")
+			params.UpdatedOn = "><" + after + "|" + before
+		} else {
+			params.UpdatedOn = "<=" + before
+		}
+	}
+	if after := q.Get("created_after"); after != "" {
+		params.CreatedOn = ">=" + after
+	}
+	if before := q.Get("created_before"); before != "" {
+		if params.CreatedOn != "" {
+			after := q.Get("created_after")
+			params.CreatedOn = "><" + after + "|" + before
+		} else {
+			params.CreatedOn = "<=" + before
+		}
+	}
+
+	params.Sort = q.Get("sort")
+
 	if limit := q.Get("limit"); limit != "" {
 		if n, err := strconv.Atoi(limit); err == nil {
 			params.Limit = n
+		}
+	}
+	if offset := q.Get("offset"); offset != "" {
+		if n, err := strconv.Atoi(offset); err == nil {
+			params.Offset = n
 		}
 	}
 
@@ -331,6 +367,7 @@ func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) {
 		ParentIssueID int            `json:"parent_issue_id"`
 		StartDate     string         `json:"start_date"`
 		DueDate       string         `json:"due_date"`
+		IsPrivate     *bool          `json:"is_private"`
 		CustomFields  map[string]any `json:"custom_fields"`
 	}
 
@@ -375,6 +412,7 @@ func (s *Server) handleCreateIssue(w http.ResponseWriter, r *http.Request) {
 	params.ParentIssueID = req.ParentIssueID
 	params.StartDate = req.StartDate
 	params.DueDate = req.DueDate
+	params.IsPrivate = req.IsPrivate
 
 	if req.CustomFields != nil {
 		resolved, err := resolveCustomFieldsAPI(req.CustomFields, s.rules)
@@ -418,10 +456,17 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
+		Subject      string         `json:"subject"`
+		Description  string         `json:"description"`
 		Status       string         `json:"status"`
+		Priority     string         `json:"priority"`
+		Tracker      string         `json:"tracker"`
 		AssignedTo   string         `json:"assigned_to"`
+		StartDate    string         `json:"start_date"`
+		DueDate      string         `json:"due_date"`
 		Notes        string         `json:"notes"`
 		DoneRatio    *int           `json:"done_ratio"`
+		IsPrivate    *bool          `json:"is_private"`
 		CustomFields map[string]any `json:"custom_fields"`
 	}
 
@@ -438,9 +483,32 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := redmine.UpdateIssueParams{
-		IssueID:   id,
-		Notes:     req.Notes,
-		DoneRatio: req.DoneRatio,
+		IssueID:     id,
+		Subject:     req.Subject,
+		Description: req.Description,
+		StartDate:   req.StartDate,
+		DueDate:     req.DueDate,
+		Notes:       req.Notes,
+		DoneRatio:   req.DoneRatio,
+		IsPrivate:   req.IsPrivate,
+	}
+
+	if req.Priority != "" {
+		priorityID, err := resolver.ResolvePriority(req.Priority)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		params.PriorityID = priorityID
+	}
+
+	if req.Tracker != "" {
+		trackerID, err := resolver.ResolveTracker(req.Tracker)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		params.TrackerID = trackerID
 	}
 
 	if req.Status != "" {
