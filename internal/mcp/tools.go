@@ -136,6 +136,9 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		mcp.WithString("sort",
 			mcp.Description("Sort order (e.g., 'updated_on:desc', 'priority:desc', 'created_on:asc')"),
 		),
+		mcp.WithObject("custom_fields",
+			mcp.Description("Filter by custom field values (field name or ID -> value, e.g., {\"SW_Category\": \"SW Tool\"})"),
+		),
 		mcp.WithNumber("limit",
 			mcp.Description("Number of issues to return (default: 25)"),
 		),
@@ -252,8 +255,20 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		mcp.WithString("assigned_to",
 			mcp.Description("Assignee name or ID"),
 		),
+		mcp.WithString("priority",
+			mcp.Description("Priority name or ID (e.g., Low, Normal, High, Urgent, Immediate)"),
+		),
+		mcp.WithString("start_date",
+			mcp.Description("Start date (YYYY-MM-DD)"),
+		),
+		mcp.WithString("due_date",
+			mcp.Description("Due date (YYYY-MM-DD)"),
+		),
 		mcp.WithObject("custom_fields",
 			mcp.Description("Custom fields as key-value pairs"),
+		),
+		mcp.WithBoolean("is_private",
+			mcp.Description("Whether the subtask is private"),
 		),
 	), h.handleIssuesCreateSubtask)
 
@@ -388,6 +403,10 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 	s.AddTool(mcp.NewTool("statuses.list",
 		mcp.WithDescription("List all issue statuses"),
 	), h.handleStatusesList)
+
+	s.AddTool(mcp.NewTool("priorities.list",
+		mcp.WithDescription("List all issue priorities"),
+	), h.handlePrioritiesList)
 
 	s.AddTool(mcp.NewTool("activities.list",
 		mcp.WithDescription("List all time entry activities"),
@@ -565,6 +584,19 @@ func (h *ToolHandlers) handleIssuesSearch(ctx context.Context, req mcp.CallToolR
 	}
 
 	params.Sort = req.GetString("sort", "")
+
+	// Custom field filter: resolve field names to IDs
+	if cfFilter := getMapArg(req, "custom_fields"); cfFilter != nil {
+		params.CustomFieldFilter = make(map[string]string)
+		for nameOrID, value := range cfFilter {
+			cfID, err := h.resolver.ResolveCustomFieldByName(nameOrID, 0, 0)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve custom field '%s': %v", nameOrID, err)), nil
+			}
+			params.CustomFieldFilter[strconv.Itoa(cfID)] = fmt.Sprintf("%v", value)
+		}
+	}
+
 	params.Limit = req.GetInt("limit", 25)
 	params.Offset = req.GetInt("offset", 0)
 
@@ -810,6 +842,8 @@ func (h *ToolHandlers) handleIssuesCreateSubtask(ctx context.Context, req mcp.Ca
 	}
 
 	params.Description = req.GetString("description", "")
+	params.StartDate = req.GetString("start_date", "")
+	params.DueDate = req.GetString("due_date", "")
 
 	if assignedTo := req.GetString("assigned_to", ""); assignedTo != "" {
 		userID, err := h.resolver.ResolveUser(assignedTo, parent.Project.ID)
@@ -817,6 +851,22 @@ func (h *ToolHandlers) handleIssuesCreateSubtask(ctx context.Context, req mcp.Ca
 			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve assignee: %v", err)), nil
 		}
 		params.AssignedToID = userID
+	}
+
+	if priority := req.GetString("priority", ""); priority != "" {
+		priorityID, err := h.resolver.ResolvePriority(priority)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve priority: %v", err)), nil
+		}
+		params.PriorityID = priorityID
+	}
+
+	if args := req.GetArguments(); args != nil {
+		if v, ok := args["is_private"]; ok {
+			if b, ok := v.(bool); ok {
+				params.IsPrivate = &b
+			}
+		}
 	}
 
 	if customFields := getMapArg(req, "custom_fields"); customFields != nil {
@@ -1495,6 +1545,27 @@ func (h *ToolHandlers) handleStatusesList(ctx context.Context, req mcp.CallToolR
 	return jsonResult(map[string]any{
 		"statuses": result,
 		"count":    len(statuses),
+	})
+}
+
+func (h *ToolHandlers) handlePrioritiesList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	priorities, err := h.resolver.GetPriorities()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to list priorities: %v", err)), nil
+	}
+
+	result := make([]map[string]any, len(priorities))
+	for i, p := range priorities {
+		result[i] = map[string]any{
+			"id":         p.ID,
+			"name":       p.Name,
+			"is_default": p.IsDefault,
+		}
+	}
+
+	return jsonResult(map[string]any{
+		"priorities": result,
+		"count":      len(priorities),
 	})
 }
 

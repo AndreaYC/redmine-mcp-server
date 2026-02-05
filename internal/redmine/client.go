@@ -425,12 +425,13 @@ type SearchIssuesParams struct {
 	StatusID     string // "open", "closed", "*", or specific status ID
 	AssignedToID string // "me" or user ID
 	Subject      string // Search keyword for subject (partial match)
-	ParentID     int
-	CreatedOn    string // Redmine date filter, e.g., ">=2024-01-01"
-	UpdatedOn    string // Redmine date filter, e.g., ">=2024-01-01"
-	Sort         string // Sort order, e.g., "updated_on:desc"
-	Limit        int
-	Offset       int
+	ParentID          int
+	CreatedOn         string // Redmine date filter, e.g., ">=2024-01-01"
+	UpdatedOn         string // Redmine date filter, e.g., ">=2024-01-01"
+	Sort              string // Sort order, e.g., "updated_on:desc"
+	CustomFieldFilter map[string]string // cf_ID -> value
+	Limit             int
+	Offset            int
 }
 
 // SearchIssues searches for issues
@@ -464,6 +465,9 @@ func (c *Client) SearchIssues(params SearchIssuesParams) ([]Issue, int, error) {
 	}
 	if params.Sort != "" {
 		query.Set("sort", params.Sort)
+	}
+	for cfID, value := range params.CustomFieldFilter {
+		query.Set("cf_"+cfID, value)
 	}
 	if params.Limit > 0 {
 		query.Set("limit", strconv.Itoa(params.Limit))

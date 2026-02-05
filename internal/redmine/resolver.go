@@ -491,6 +491,18 @@ func (r *Resolver) ResolveCustomFieldByName(nameOrID string, projectID int, trac
 	return 0, &ResolveError{Type: "custom field", Query: nameOrID, NotFound: true}
 }
 
+// GetPriorities returns all issue priorities
+func (r *Resolver) GetPriorities() ([]IssuePriority, error) {
+	if r.priorities == nil {
+		priorities, err := r.client.ListIssuePriorities()
+		if err != nil {
+			return nil, err
+		}
+		r.priorities = priorities
+	}
+	return r.priorities, nil
+}
+
 // GetCustomFields returns all custom field definitions (requires admin)
 func (r *Resolver) GetCustomFields() ([]CustomFieldDefinitionFull, error) {
 	if r.customFields == nil {
