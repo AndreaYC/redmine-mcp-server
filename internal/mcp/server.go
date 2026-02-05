@@ -24,6 +24,7 @@ type Config struct {
 	Port                 int
 	SSEMode              bool
 	CustomFieldRulesFile string
+	WorkflowRulesFile    string
 }
 
 // Server wraps the MCP server
@@ -57,7 +58,8 @@ func (s *Server) Run() error {
 	// Stdio mode - use env var for API key
 	client := redmine.NewClient(s.config.RedmineURL, s.config.RedmineAPIKey)
 	rules := s.loadCustomFieldRules()
-	s.handler = NewToolHandlers(client, rules)
+	workflow := s.loadWorkflowRules()
+	s.handler = NewToolHandlers(client, rules, workflow)
 	s.handler.RegisterTools(s.mcp)
 
 	slog.Info("Starting MCP server in stdio mode",
@@ -83,6 +85,22 @@ func (s *Server) loadCustomFieldRules() *redmine.CustomFieldRules {
 	return rules
 }
 
+// loadWorkflowRules loads workflow transition rules from the configured file
+func (s *Server) loadWorkflowRules() *redmine.WorkflowRules {
+	if s.config.WorkflowRulesFile == "" {
+		return nil
+	}
+	rules, err := redmine.LoadWorkflowRules(s.config.WorkflowRulesFile)
+	if err != nil {
+		slog.Warn("Failed to load workflow rules", "file", s.config.WorkflowRulesFile, "error", err)
+		return nil
+	}
+	if rules != nil {
+		slog.Info("Loaded workflow rules", "file", s.config.WorkflowRulesFile, "trackers", len(rules.Trackers))
+	}
+	return rules
+}
+
 // runSSE starts the server in SSE mode
 func (s *Server) runSSE() error {
 	addr := fmt.Sprintf(":%d", s.config.Port)
@@ -94,7 +112,8 @@ func (s *Server) runSSE() error {
 
 	// Create session manager for multi-tenant SSE
 	rules := s.loadCustomFieldRules()
-	sessionMgr := newSessionManager(s.config.RedmineURL, rules)
+	workflow := s.loadWorkflowRules()
+	sessionMgr := newSessionManager(s.config.RedmineURL, rules, workflow)
 
 	// Rate limiter: 100 requests per minute per IP
 	rateLimiter := newSimpleRateLimiter(100, time.Minute)
@@ -119,13 +138,15 @@ type sessionManager struct {
 	servers    map[string]*server.SSEServer // API key -> SSE server
 	redmineURL string
 	rules      *redmine.CustomFieldRules
+	workflow   *redmine.WorkflowRules
 }
 
-func newSessionManager(redmineURL string, rules *redmine.CustomFieldRules) *sessionManager {
+func newSessionManager(redmineURL string, rules *redmine.CustomFieldRules, workflow *redmine.WorkflowRules) *sessionManager {
 	return &sessionManager{
 		servers:    make(map[string]*server.SSEServer),
 		redmineURL: redmineURL,
 		rules:      rules,
+		workflow:   workflow,
 	}
 }
 
@@ -156,7 +177,7 @@ func (m *sessionManager) getOrCreateServer(apiKey string) *server.SSEServer {
 	)
 
 	// Register tools
-	handler := NewToolHandlers(client, m.rules)
+	handler := NewToolHandlers(client, m.rules, m.workflow)
 	handler.RegisterTools(mcpServer)
 
 	// Create SSE server

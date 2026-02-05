@@ -54,14 +54,16 @@ type ToolHandlers struct {
 	client   *redmine.Client
 	resolver *redmine.Resolver
 	rules    *redmine.CustomFieldRules
+	workflow *redmine.WorkflowRules
 }
 
 // NewToolHandlers creates new tool handlers
-func NewToolHandlers(client *redmine.Client, rules *redmine.CustomFieldRules) *ToolHandlers {
+func NewToolHandlers(client *redmine.Client, rules *redmine.CustomFieldRules, workflow *redmine.WorkflowRules) *ToolHandlers {
 	return &ToolHandlers{
 		client:   client,
 		resolver: redmine.NewResolver(client),
 		rules:    rules,
+		workflow: workflow,
 	}
 }
 
@@ -345,6 +347,13 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 	s.AddTool(mcp.NewTool("activities.list",
 		mcp.WithDescription("List all time entry activities"),
 	), h.handleActivitiesList)
+
+	s.AddTool(mcp.NewTool("reference.workflow",
+		mcp.WithDescription("Show workflow transition rules for trackers. Shows which status transitions are allowed for each tracker."),
+		mcp.WithString("tracker",
+			mcp.Description("Tracker name or ID (optional, shows all trackers if omitted)"),
+		),
+	), h.handleReferenceWorkflow)
 }
 
 // McpServer interface for registering tools
@@ -515,6 +524,18 @@ func (h *ToolHandlers) handleIssuesGetById(ctx context.Context, req mcp.CallTool
 	}
 
 	result := formatIssueDetail(*issue)
+
+	// Add allowed_statuses from workflow rules (Redmine pre-5.0 doesn't provide this)
+	if h.workflow != nil && len(issue.AllowedStatuses) == 0 {
+		if allowed := h.workflow.GetAllowedStatuses(issue.Tracker.ID, issue.Status.ID); len(allowed) > 0 {
+			statuses := make([]map[string]any, len(allowed))
+			for i, s := range allowed {
+				statuses[i] = map[string]any{"id": s.ID, "name": s.Name}
+			}
+			result["allowed_statuses"] = statuses
+		}
+	}
+
 	return jsonResult(result)
 }
 
@@ -601,6 +622,9 @@ func (h *ToolHandlers) handleIssuesUpdate(ctx context.Context, req mcp.CallToolR
 		statusID, err := h.resolver.ResolveStatusID(status)
 		if err != nil {
 			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve status: %v", err)), nil
+		}
+		if err := h.workflow.ValidateTransition(issue.Tracker.ID, issue.Status.ID, statusID); err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid status transition: %v", err)), nil
 		}
 		params.StatusID = statusID
 	}
@@ -1386,6 +1410,86 @@ func (h *ToolHandlers) handleActivitiesList(ctx context.Context, req mcp.CallToo
 		"activities": result,
 		"count":      len(activities),
 	})
+}
+
+func (h *ToolHandlers) handleReferenceWorkflow(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if h.workflow == nil {
+		return mcp.NewToolResultError("Workflow rules not configured. Set WORKFLOW_RULES_FILE or --workflow-rules flag."), nil
+	}
+
+	trackerStr := req.GetString("tracker", "")
+
+	if trackerStr != "" {
+		// Show specific tracker
+		trackerID, err := h.resolver.ResolveTracker(trackerStr)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve tracker: %v", err)), nil
+		}
+
+		trackerKey := strconv.Itoa(trackerID)
+		tracker, ok := h.workflow.Trackers[trackerKey]
+		if !ok {
+			return mcp.NewToolResultError(fmt.Sprintf("No workflow rules defined for tracker %s (ID: %d)", trackerStr, trackerID)), nil
+		}
+
+		return jsonResult(formatTrackerWorkflow(trackerID, tracker))
+	}
+
+	// Show all trackers summary
+	trackers := make([]map[string]any, 0, len(h.workflow.Trackers))
+	for idStr, tracker := range h.workflow.Trackers {
+		id, _ := strconv.Atoi(idStr)
+		trackers = append(trackers, formatTrackerWorkflow(id, tracker))
+	}
+
+	return jsonResult(map[string]any{
+		"trackers": trackers,
+		"count":    len(trackers),
+	})
+}
+
+func formatTrackerWorkflow(trackerID int, tracker redmine.WorkflowTracker) map[string]any {
+	// Build statuses list
+	statuses := make([]map[string]any, 0, len(tracker.Statuses))
+	for idStr, s := range tracker.Statuses {
+		id, _ := strconv.Atoi(idStr)
+		statuses = append(statuses, map[string]any{
+			"id":        id,
+			"name":      s.Name,
+			"is_closed": s.IsClosed,
+		})
+	}
+
+	// Build transitions
+	transitions := make([]map[string]any, 0, len(tracker.Transitions))
+	for fromIDStr, toIDs := range tracker.Transitions {
+		fromID, _ := strconv.Atoi(fromIDStr)
+		fromName := "Unknown"
+		if s, ok := tracker.Statuses[fromIDStr]; ok {
+			fromName = s.Name
+		}
+
+		targets := make([]map[string]any, len(toIDs))
+		for i, toID := range toIDs {
+			toName := "Unknown"
+			if s, ok := tracker.Statuses[strconv.Itoa(toID)]; ok {
+				toName = s.Name
+			}
+			targets[i] = map[string]any{"id": toID, "name": toName}
+		}
+
+		transitions = append(transitions, map[string]any{
+			"from":    map[string]any{"id": fromID, "name": fromName},
+			"allowed": targets,
+		})
+	}
+
+	return map[string]any{
+		"tracker_id":   trackerID,
+		"tracker_name": tracker.Name,
+		"statuses":     statuses,
+		"transitions":  transitions,
+	}
 }
 
 // Helper functions

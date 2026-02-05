@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -290,7 +291,20 @@ func (s *Server) handleGetIssue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	writeJSON(w, http.StatusOK, formatIssueDetailAPI(*issue))
+	result := formatIssueDetailAPI(*issue)
+
+	// Add allowed_statuses from workflow rules (Redmine pre-5.0 doesn't provide this)
+	if s.workflow != nil && len(issue.AllowedStatuses) == 0 {
+		if allowed := s.workflow.GetAllowedStatuses(issue.Tracker.ID, issue.Status.ID); len(allowed) > 0 {
+			statuses := make([]map[string]any, len(allowed))
+			for i, as := range allowed {
+				statuses[i] = map[string]any{"id": as.ID, "name": as.Name}
+			}
+			result["allowed_statuses"] = statuses
+		}
+	}
+
+	writeJSON(w, http.StatusOK, result)
 }
 
 // @Summary Create issue
@@ -433,6 +447,10 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 		statusID, err := resolver.ResolveStatusID(req.Status)
 		if err != nil {
 			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if err := s.workflow.ValidateTransition(issue.Tracker.ID, issue.Status.ID, statusID); err != nil {
+			writeError(w, http.StatusBadRequest, fmt.Sprintf("Invalid status transition: %v", err))
 			return
 		}
 		params.StatusID = statusID

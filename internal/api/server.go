@@ -19,6 +19,7 @@ type Config struct {
 	RedmineURL           string
 	Port                 int
 	CustomFieldRulesFile string
+	WorkflowRulesFile    string
 }
 
 // Server is the REST API server
@@ -27,6 +28,7 @@ type Server struct {
 	router      *chi.Mux
 	rateLimiter *RateLimiter
 	rules       *redmine.CustomFieldRules
+	workflow    *redmine.WorkflowRules
 }
 
 // NewServer creates a new API server
@@ -42,11 +44,23 @@ func NewServer(config Config) *Server {
 		}
 	}
 
+	var workflow *redmine.WorkflowRules
+	if config.WorkflowRulesFile != "" {
+		var werr error
+		workflow, werr = redmine.LoadWorkflowRules(config.WorkflowRulesFile)
+		if werr != nil {
+			slog.Warn("Failed to load workflow rules", "file", config.WorkflowRulesFile, "error", werr)
+		} else if workflow != nil {
+			slog.Info("Loaded workflow rules", "file", config.WorkflowRulesFile, "trackers", len(workflow.Trackers))
+		}
+	}
+
 	s := &Server{
 		config:      config,
 		router:      chi.NewRouter(),
 		rateLimiter: NewRateLimiter(100, time.Second, 200), // 100 req/sec, burst 200
 		rules:       rules,
+		workflow:    workflow,
 	}
 
 	s.setupRoutes()

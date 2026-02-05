@@ -1,0 +1,61 @@
+{
+  "trackers": {
+    "1": {
+      "name": "Requirement",
+      "statuses": {
+        "33": { "name": "New", "is_closed": false },
+        "2":  { "name": "In Progress", "is_closed": false },
+        "7":  { "name": "Analyzing", "is_closed": false },
+        "9":  { "name": "Clarifying", "is_closed": false },
+        "11": { "name": "Confirmed", "is_closed": false },
+        "12": { "name": "Completed", "is_closed": true },
+        "40": { "name": "No Go", "is_closed": true },
+        "41": { "name": "Changed", "is_closed": false }
+      },
+      "transitions": {
+        "33": [2, 7, 9, 11, 12, 40, 41],
+        "2":  [7, 9, 11, 12, 40, 41],
+        "7":  [2, 9, 11, 12, 40, 41],
+        "9":  [2, 7, 11, 12, 40, 41],
+        "11": [2, 7, 9, 12, 40, 41],
+        "12": [2, 7, 9, 11, 40, 41],
+        "40": [2, 7, 9, 11, 12, 41],
+        "41": [2, 7, 9, 11, 12, 40]
+      }
+    },
+    "4": {
+      "name": "Bug",
+      "statuses": {
+        "33": { "name": "New", "is_closed": false },
+        "9":  { "name": "Clarifying", "is_closed": false },
+        "20": { "name": "Fixing", "is_closed": false },
+        "44": { "name": "Pending", "is_closed": false },
+        "6":  { "name": "Rejected", "is_closed": true },
+        "38": { "name": "Won't-fix", "is_closed": true }
+      },
+      "transitions": {
+        "33": [9, 20, 44, 6, 38],
+        "9":  [20, 44, 6, 38],
+        "20": [9, 44, 6, 38],
+        "44": [9, 20, 38],
+        "6":  [9],
+        "38": [9, 6]
+      }
+    },
+    "32": {
+      "name": "SW_Task",
+      "statuses": {
+        "33": { "name": "New", "is_closed": false },
+        "2":  { "name": "In Progress", "is_closed": false },
+        "44": { "name": "Pending", "is_closed": false },
+        "5":  { "name": "Closed", "is_closed": true }
+      },
+      "transitions": {
+        "33": [2, 44, 5],
+        "2":  [44, 5],
+        "44": [2, 5],
+        "5":  []
+      }
+    }
+  }
+}

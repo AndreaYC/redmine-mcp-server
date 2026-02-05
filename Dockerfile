@@ -31,6 +31,9 @@ COPY --from=builder /app/docs /app/docs
 # Copy custom field rules
 COPY --from=builder /app/custom_field_rules.json /app/custom_field_rules.json
 
+# Copy workflow rules
+COPY --from=builder /app/workflow.json /app/workflow.json
+
 # Create non-root user
 RUN adduser -D -g '' appuser
 USER appuser

@@ -18,6 +18,7 @@ var (
 	port                 int
 	logLevel             string
 	customFieldRulesFile string
+	workflowRulesFile    string
 )
 
 func main() {
@@ -35,6 +36,7 @@ func main() {
 	rootCmd.PersistentFlags().IntVar(&port, "port", 8080, "Server port (for SSE and API modes)")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	rootCmd.PersistentFlags().StringVar(&customFieldRulesFile, "custom-field-rules", os.Getenv("CUSTOM_FIELD_RULES_FILE"), "Path to custom field validation rules JSON file")
+	rootCmd.PersistentFlags().StringVar(&workflowRulesFile, "workflow-rules", os.Getenv("WORKFLOW_RULES_FILE"), "Path to workflow transition rules JSON file")
 
 	// MCP command
 	mcpCmd := &cobra.Command{
@@ -95,6 +97,7 @@ func runMCP(cmd *cobra.Command, args []string) error {
 		Port:                 port,
 		SSEMode:              sseMode,
 		CustomFieldRulesFile: customFieldRulesFile,
+		WorkflowRulesFile:    workflowRulesFile,
 	}
 
 	if !sseMode && config.RedmineAPIKey == "" {
@@ -114,6 +117,7 @@ func runAPI(cmd *cobra.Command, args []string) error {
 		RedmineURL:           redmineURL,
 		Port:                 port,
 		CustomFieldRulesFile: customFieldRulesFile,
+		WorkflowRulesFile:    workflowRulesFile,
 	}
 
 	server := api.NewServer(config)
