@@ -2284,7 +2284,7 @@ func (h *ToolHandlers) handleUsersSearch(ctx context.Context, req mcp.CallToolRe
 
 func (h *ToolHandlers) handleIssuesBatchUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	issueIDsRaw := getArrayArg(req, "issue_ids")
-	if issueIDsRaw == nil || len(issueIDsRaw) == 0 {
+	if len(issueIDsRaw) == 0 {
 		return mcp.NewToolResultError("issue_ids is required and must be a non-empty array"), nil
 	}
 
