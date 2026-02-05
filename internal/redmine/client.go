@@ -286,6 +286,46 @@ type CustomFieldDefinition struct {
 	PossibleValues []string `json:"possible_values,omitempty"`
 }
 
+// CustomFieldDefinitionFull represents a full custom field definition from admin API
+type CustomFieldDefinitionFull struct {
+	ID             int    `json:"id"`
+	Name           string `json:"name"`
+	CustomizedType string `json:"customized_type"`
+	FieldFormat    string `json:"field_format"`
+	IsRequired     bool   `json:"is_required"`
+	Multiple       bool   `json:"multiple"`
+	Visible        bool   `json:"visible"`
+	PossibleValues []struct {
+		Value string `json:"value"`
+	} `json:"possible_values,omitempty"`
+	Trackers     []IDName `json:"trackers,omitempty"`
+	DefaultValue string   `json:"default_value,omitempty"`
+}
+
+// ProjectDetail represents a project with detailed includes (trackers, custom fields)
+type ProjectDetail struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Identifier  string `json:"identifier"`
+	Description string `json:"description"`
+	Status      int    `json:"status"`
+	Parent      *struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	} `json:"parent,omitempty"`
+	Trackers          []IDName `json:"trackers,omitempty"`
+	IssueCustomFields []IDName `json:"issue_custom_fields,omitempty"`
+}
+
+// UpdateProjectParams are parameters for updating a project
+type UpdateProjectParams struct {
+	ProjectID           int
+	Name                string // optional, omit if empty
+	Description         string // optional, omit if empty
+	TrackerIDs          []int  // nil = don't change, [] = clear all
+	IssueCustomFieldIDs []int  // nil = don't change, [] = clear all
+}
+
 // Issue represents a Redmine issue
 type Issue struct {
 	ID          int     `json:"id"`
@@ -796,4 +836,72 @@ func (c *Client) GetProjectCustomFields(projectID int, trackerID int) ([]CustomF
 	}
 
 	return definitions, nil
+}
+
+// ListAllCustomFields returns all custom field definitions (requires admin privileges)
+func (c *Client) ListAllCustomFields() ([]CustomFieldDefinitionFull, error) {
+	data, err := c.doRequest("GET", "/custom_fields.json", nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list custom fields (requires admin privileges): %w", err)
+	}
+
+	var resp struct {
+		CustomFields []CustomFieldDefinitionFull `json:"custom_fields"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return resp.CustomFields, nil
+}
+
+// GetProjectDetail returns a project with detailed includes (trackers, custom fields)
+func (c *Client) GetProjectDetail(projectID int, includes []string) (*ProjectDetail, error) {
+	path := fmt.Sprintf("/projects/%d.json", projectID)
+	if len(includes) > 0 {
+		path += "?include=" + strings.Join(includes, ",")
+	}
+
+	data, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Project ProjectDetail `json:"project"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp.Project, nil
+}
+
+// UpdateProject updates a project's settings
+func (c *Client) UpdateProject(params UpdateProjectParams) error {
+	projectData := make(map[string]any)
+
+	if params.Name != "" {
+		projectData["name"] = params.Name
+	}
+	if params.Description != "" {
+		projectData["description"] = params.Description
+	}
+	if params.TrackerIDs != nil {
+		projectData["tracker_ids"] = params.TrackerIDs
+	}
+	if params.IssueCustomFieldIDs != nil {
+		projectData["issue_custom_field_ids"] = params.IssueCustomFieldIDs
+	}
+
+	reqBody := map[string]any{
+		"project": projectData,
+	}
+
+	path := fmt.Sprintf("/projects/%d.json", params.ProjectID)
+	_, err := c.doRequest("PUT", path, reqBody)
+	if err != nil {
+		return fmt.Errorf("failed to update project (may require admin or project manager privileges): %w", err)
+	}
+	return nil
 }

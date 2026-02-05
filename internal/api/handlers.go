@@ -819,6 +819,244 @@ func (s *Server) handleListActivities(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// @Summary List all custom fields
+// @Description Returns all custom field definitions (requires admin privileges)
+// @Tags Custom Fields
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param type query string false "Filter by customized type: issue, project, user, time_entry, version, group"
+// @Success 200 {object} map[string]any
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Router /custom_fields [get]
+func (s *Server) handleListAllCustomFields(w http.ResponseWriter, r *http.Request) {
+	client := getClient(r.Context())
+
+	fields, err := client.ListAllCustomFields()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError,
+			"Requires admin privileges. Use project-specific endpoints to see fields available in a specific project. Error: "+err.Error())
+		return
+	}
+
+	typeFilter := r.URL.Query().Get("type")
+
+	results := make([]map[string]any, 0)
+	for _, f := range fields {
+		if typeFilter != "" && f.CustomizedType != typeFilter {
+			continue
+		}
+		field := map[string]any{
+			"id":              f.ID,
+			"name":            f.Name,
+			"customized_type": f.CustomizedType,
+			"field_format":    f.FieldFormat,
+			"is_required":     f.IsRequired,
+			"visible":         f.Visible,
+		}
+		if f.Multiple {
+			field["multiple"] = true
+		}
+		if f.DefaultValue != "" {
+			field["default_value"] = f.DefaultValue
+		}
+		if len(f.PossibleValues) > 0 {
+			vals := make([]string, len(f.PossibleValues))
+			for i, v := range f.PossibleValues {
+				vals[i] = v.Value
+			}
+			field["possible_values"] = vals
+		}
+		if len(f.Trackers) > 0 {
+			trackers := make([]map[string]any, len(f.Trackers))
+			for i, t := range f.Trackers {
+				trackers[i] = map[string]any{"id": t.ID, "name": t.Name}
+			}
+			field["trackers"] = trackers
+		}
+		results = append(results, field)
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"custom_fields": results,
+		"count":         len(results),
+	})
+}
+
+// @Summary Get project details
+// @Description Get project with enabled trackers and custom fields
+// @Tags Projects
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param id path int true "Project ID"
+// @Success 200 {object} map[string]any
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Router /projects/{id} [get]
+func (s *Server) handleGetProject(w http.ResponseWriter, r *http.Request) {
+	client := getClient(r.Context())
+
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		// Try resolving by name/identifier
+		resolver := redmine.NewResolver(client)
+		id, err = resolver.ResolveProject(idStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid project ID or name: "+err.Error())
+			return
+		}
+	}
+
+	project, err := client.GetProjectDetail(id, []string{"trackers", "issue_custom_fields"})
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	result := map[string]any{
+		"id":          project.ID,
+		"name":        project.Name,
+		"identifier":  project.Identifier,
+		"description": project.Description,
+		"status":      project.Status,
+	}
+
+	if project.Parent != nil {
+		result["parent"] = map[string]any{
+			"id":   project.Parent.ID,
+			"name": project.Parent.Name,
+		}
+	}
+
+	trackers := make([]map[string]any, len(project.Trackers))
+	for i, t := range project.Trackers {
+		trackers[i] = map[string]any{"id": t.ID, "name": t.Name}
+	}
+	result["trackers"] = trackers
+
+	customFields := make([]map[string]any, len(project.IssueCustomFields))
+	for i, cf := range project.IssueCustomFields {
+		customFields[i] = map[string]any{"id": cf.ID, "name": cf.Name}
+	}
+	result["issue_custom_fields"] = customFields
+
+	writeJSON(w, http.StatusOK, result)
+}
+
+// @Summary Update project
+// @Description Update project settings (trackers, custom fields, name, description)
+// @Tags Projects
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param id path int true "Project ID"
+// @Param request body object true "Project update data"
+// @Success 200 {object} map[string]any
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Failure 403 {object} map[string]string
+// @Router /projects/{id} [patch]
+func (s *Server) handleUpdateProject(w http.ResponseWriter, r *http.Request) {
+	client := getClient(r.Context())
+	resolver := redmine.NewResolver(client)
+
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		id, err = resolver.ResolveProject(idStr)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, "Invalid project ID or name: "+err.Error())
+			return
+		}
+	}
+
+	var req struct {
+		Name                string   `json:"name"`
+		Description         string   `json:"description"`
+		TrackerIDs          []string `json:"tracker_ids"`
+		IssueCustomFieldIDs []string `json:"issue_custom_field_ids"`
+	}
+
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeError(w, http.StatusBadRequest, "Invalid request body")
+		return
+	}
+
+	params := redmine.UpdateProjectParams{
+		ProjectID:   id,
+		Name:        req.Name,
+		Description: req.Description,
+	}
+
+	// Resolve tracker IDs (names or numeric IDs)
+	if req.TrackerIDs != nil {
+		trackerIDs := make([]int, 0, len(req.TrackerIDs))
+		for _, s := range req.TrackerIDs {
+			tid, err := resolver.ResolveTracker(s)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "Failed to resolve tracker '"+s+"': "+err.Error())
+				return
+			}
+			trackerIDs = append(trackerIDs, tid)
+		}
+		params.TrackerIDs = trackerIDs
+	}
+
+	// Resolve custom field IDs (names or numeric IDs)
+	if req.IssueCustomFieldIDs != nil {
+		cfIDs := make([]int, 0, len(req.IssueCustomFieldIDs))
+		for _, s := range req.IssueCustomFieldIDs {
+			cfid, err := resolver.ResolveCustomFieldByName(s, id, 0)
+			if err != nil {
+				writeError(w, http.StatusBadRequest, "Failed to resolve custom field '"+s+"': "+err.Error())
+				return
+			}
+			cfIDs = append(cfIDs, cfid)
+		}
+		params.IssueCustomFieldIDs = cfIDs
+	}
+
+	if err := client.UpdateProject(params); err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	// Return updated project detail
+	project, err := client.GetProjectDetail(id, []string{"trackers", "issue_custom_fields"})
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{
+			"success":    true,
+			"project_id": id,
+			"message":    "Project updated successfully",
+		})
+		return
+	}
+
+	result := map[string]any{
+		"success":    true,
+		"project_id": project.ID,
+		"name":       project.Name,
+		"message":    "Project updated successfully",
+	}
+
+	trackers := make([]map[string]any, len(project.Trackers))
+	for i, t := range project.Trackers {
+		trackers[i] = map[string]any{"id": t.ID, "name": t.Name}
+	}
+	result["trackers"] = trackers
+
+	customFields := make([]map[string]any, len(project.IssueCustomFields))
+	for i, cf := range project.IssueCustomFields {
+		customFields[i] = map[string]any{"id": cf.ID, "name": cf.Name}
+	}
+	result["issue_custom_fields"] = customFields
+
+	writeJSON(w, http.StatusOK, result)
+}
+
 // Helper functions
 
 func formatIssueAPI(issue redmine.Issue) map[string]any {

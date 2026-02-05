@@ -11,10 +11,11 @@ type Resolver struct {
 	client *Client
 
 	// Cached data
-	trackers   []Tracker
-	statuses   []IssueStatus
-	projects   []Project
-	activities []TimeEntryActivity
+	trackers     []Tracker
+	statuses     []IssueStatus
+	projects     []Project
+	activities   []TimeEntryActivity
+	customFields []CustomFieldDefinitionFull
 }
 
 // NewResolver creates a new resolver
@@ -388,4 +389,75 @@ func (r *Resolver) GetActivities() ([]TimeEntryActivity, error) {
 		r.activities = activities
 	}
 	return r.activities, nil
+}
+
+// ResolveCustomFieldByName resolves a custom field name or ID to its ID.
+// First tries admin API cache, falls back to project-specific fields if admin API fails.
+func (r *Resolver) ResolveCustomFieldByName(nameOrID string, projectID int, trackerID int) (int, error) {
+	// Try parsing as ID first
+	if id, err := strconv.Atoi(nameOrID); err == nil {
+		return id, nil
+	}
+
+	// Try admin API cache first
+	if r.customFields == nil {
+		fields, err := r.client.ListAllCustomFields()
+		if err == nil {
+			r.customFields = fields
+		}
+		// If admin API fails, customFields stays nil — we'll fall back below
+	}
+
+	query := strings.ToLower(nameOrID)
+
+	// Search in admin API cache if available
+	if r.customFields != nil {
+		var matches []IDName
+		for _, cf := range r.customFields {
+			if strings.ToLower(cf.Name) == query {
+				matches = append(matches, IDName{ID: cf.ID, Name: cf.Name})
+			}
+		}
+		if len(matches) == 0 {
+			for _, cf := range r.customFields {
+				if strings.Contains(strings.ToLower(cf.Name), query) {
+					matches = append(matches, IDName{ID: cf.ID, Name: cf.Name})
+				}
+			}
+		}
+		if len(matches) == 1 {
+			return matches[0].ID, nil
+		}
+		if len(matches) > 1 {
+			return 0, &ResolveError{Type: "custom field", Query: nameOrID, Matches: matches}
+		}
+		// Not found in admin cache — return not found
+		return 0, &ResolveError{Type: "custom field", Query: nameOrID, NotFound: true}
+	}
+
+	// Fallback: use project-specific custom fields (from issue inspection)
+	if projectID > 0 {
+		defs, err := r.client.GetProjectCustomFields(projectID, trackerID)
+		if err == nil {
+			for _, def := range defs {
+				if strings.ToLower(def.Name) == query {
+					return def.ID, nil
+				}
+			}
+		}
+	}
+
+	return 0, &ResolveError{Type: "custom field", Query: nameOrID, NotFound: true}
+}
+
+// GetCustomFields returns all custom field definitions (requires admin)
+func (r *Resolver) GetCustomFields() ([]CustomFieldDefinitionFull, error) {
+	if r.customFields == nil {
+		fields, err := r.client.ListAllCustomFields()
+		if err != nil {
+			return nil, err
+		}
+		r.customFields = fields
+	}
+	return r.customFields, nil
 }

@@ -247,6 +247,44 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		mcp.WithString("tracker", mcp.Description("Tracker name or ID (optional)")),
 	), h.handleCustomFieldsList)
 
+	s.AddTool(mcp.NewTool("customFields.listAll",
+		mcp.WithDescription("List all custom field definitions (requires admin privileges). Use customFields.list for project-specific fields without admin access."),
+		mcp.WithString("type",
+			mcp.Description("Filter by customized type: issue, project, user, time_entry, version, group"),
+		),
+	), h.handleCustomFieldsListAll)
+
+	// Projects (detail & update)
+	s.AddTool(mcp.NewTool("projects.getDetail",
+		mcp.WithDescription("Get project details including enabled trackers and custom fields"),
+		mcp.WithString("project",
+			mcp.Required(),
+			mcp.Description("Project name or ID"),
+		),
+	), h.handleProjectsGetDetail)
+
+	s.AddTool(mcp.NewTool("projects.update",
+		mcp.WithDescription("Update project settings (trackers, custom fields, name, description). Requires admin or project manager privileges."),
+		mcp.WithString("project",
+			mcp.Required(),
+			mcp.Description("Project name or ID"),
+		),
+		mcp.WithString("name",
+			mcp.Description("New project name"),
+		),
+		mcp.WithString("description",
+			mcp.Description("New project description"),
+		),
+		mcp.WithArray("tracker_ids",
+			mcp.Description("Tracker names or IDs to enable for this project. Pass empty array to clear all."),
+			mcp.Items(map[string]any{"type": "string"}),
+		),
+		mcp.WithArray("issue_custom_field_ids",
+			mcp.Description("Custom field names or IDs to enable for this project. Pass empty array to clear all."),
+			mcp.Items(map[string]any{"type": "string"}),
+		),
+	), h.handleProjectsUpdate)
+
 	// Time Entries
 	s.AddTool(mcp.NewTool("timeEntries.create",
 		mcp.WithDescription("Create a time entry for an issue"),
@@ -845,6 +883,186 @@ func (h *ToolHandlers) handleCustomFieldsList(ctx context.Context, req mcp.CallT
 	})
 }
 
+func (h *ToolHandlers) handleCustomFieldsListAll(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	fields, err := h.client.ListAllCustomFields()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf(
+			"Requires admin privileges. Use customFields.list with a project/tracker to see fields available in a specific project (no admin required). Error: %v", err)), nil
+	}
+
+	// Optional type filter
+	typeFilter := req.GetString("type", "")
+
+	results := make([]map[string]any, 0)
+	for _, f := range fields {
+		if typeFilter != "" && f.CustomizedType != typeFilter {
+			continue
+		}
+		field := map[string]any{
+			"id":              f.ID,
+			"name":            f.Name,
+			"customized_type": f.CustomizedType,
+			"field_format":    f.FieldFormat,
+			"is_required":     f.IsRequired,
+			"visible":         f.Visible,
+		}
+		if f.Multiple {
+			field["multiple"] = true
+		}
+		if f.DefaultValue != "" {
+			field["default_value"] = f.DefaultValue
+		}
+		if len(f.PossibleValues) > 0 {
+			vals := make([]string, len(f.PossibleValues))
+			for i, v := range f.PossibleValues {
+				vals[i] = v.Value
+			}
+			field["possible_values"] = vals
+		}
+		if len(f.Trackers) > 0 {
+			trackers := make([]map[string]any, len(f.Trackers))
+			for i, t := range f.Trackers {
+				trackers[i] = map[string]any{"id": t.ID, "name": t.Name}
+			}
+			field["trackers"] = trackers
+		}
+		results = append(results, field)
+	}
+
+	return jsonResult(map[string]any{
+		"custom_fields": results,
+		"count":         len(results),
+	})
+}
+
+func (h *ToolHandlers) handleProjectsGetDetail(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projectStr, err := req.RequireString("project")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectID, err := h.resolver.ResolveProject(projectStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+	}
+
+	project, err := h.client.GetProjectDetail(projectID, []string{"trackers", "issue_custom_fields"})
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get project detail: %v", err)), nil
+	}
+
+	result := map[string]any{
+		"id":          project.ID,
+		"name":        project.Name,
+		"identifier":  project.Identifier,
+		"description": project.Description,
+		"status":      project.Status,
+	}
+
+	if project.Parent != nil {
+		result["parent"] = map[string]any{
+			"id":   project.Parent.ID,
+			"name": project.Parent.Name,
+		}
+	}
+
+	trackers := make([]map[string]any, len(project.Trackers))
+	for i, t := range project.Trackers {
+		trackers[i] = map[string]any{"id": t.ID, "name": t.Name}
+	}
+	result["trackers"] = trackers
+
+	customFields := make([]map[string]any, len(project.IssueCustomFields))
+	for i, cf := range project.IssueCustomFields {
+		customFields[i] = map[string]any{"id": cf.ID, "name": cf.Name}
+	}
+	result["issue_custom_fields"] = customFields
+
+	return jsonResult(result)
+}
+
+func (h *ToolHandlers) handleProjectsUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projectStr, err := req.RequireString("project")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectID, err := h.resolver.ResolveProject(projectStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+	}
+
+	params := redmine.UpdateProjectParams{
+		ProjectID: projectID,
+	}
+
+	params.Name = req.GetString("name", "")
+	params.Description = req.GetString("description", "")
+
+	// Resolve tracker_ids (names or IDs)
+	if trackerArgs := getArrayArg(req, "tracker_ids"); trackerArgs != nil {
+		trackerIDs := make([]int, 0, len(trackerArgs))
+		for _, arg := range trackerArgs {
+			s := fmt.Sprintf("%v", arg)
+			id, err := h.resolver.ResolveTracker(s)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve tracker '%s': %v", s, err)), nil
+			}
+			trackerIDs = append(trackerIDs, id)
+		}
+		params.TrackerIDs = trackerIDs
+	}
+
+	// Resolve issue_custom_field_ids (names or IDs)
+	if cfArgs := getArrayArg(req, "issue_custom_field_ids"); cfArgs != nil {
+		cfIDs := make([]int, 0, len(cfArgs))
+		for _, arg := range cfArgs {
+			s := fmt.Sprintf("%v", arg)
+			id, err := h.resolver.ResolveCustomFieldByName(s, projectID, 0)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve custom field '%s': %v", s, err)), nil
+			}
+			cfIDs = append(cfIDs, id)
+		}
+		params.IssueCustomFieldIDs = cfIDs
+	}
+
+	if err := h.client.UpdateProject(params); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to update project: %v", err)), nil
+	}
+
+	// Return updated project detail
+	project, err := h.client.GetProjectDetail(projectID, []string{"trackers", "issue_custom_fields"})
+	if err != nil {
+		return jsonResult(map[string]any{
+			"success":    true,
+			"project_id": projectID,
+			"message":    "Project updated successfully (could not fetch updated details)",
+		})
+	}
+
+	result := map[string]any{
+		"success":    true,
+		"project_id": project.ID,
+		"name":       project.Name,
+		"message":    "Project updated successfully",
+	}
+
+	trackers := make([]map[string]any, len(project.Trackers))
+	for i, t := range project.Trackers {
+		trackers[i] = map[string]any{"id": t.ID, "name": t.Name}
+	}
+	result["trackers"] = trackers
+
+	customFields := make([]map[string]any, len(project.IssueCustomFields))
+	for i, cf := range project.IssueCustomFields {
+		customFields[i] = map[string]any{"id": cf.ID, "name": cf.Name}
+	}
+	result["issue_custom_fields"] = customFields
+
+	return jsonResult(result)
+}
+
 func (h *ToolHandlers) handleTimeEntriesCreate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	issueIDFloat, err := req.RequireFloat("issue_id")
 	if err != nil {
@@ -1326,6 +1544,16 @@ func getMapArg(req mcp.CallToolRequest, key string) map[string]any {
 	if v, ok := args[key]; ok {
 		if m, ok := v.(map[string]any); ok {
 			return m
+		}
+	}
+	return nil
+}
+
+func getArrayArg(req mcp.CallToolRequest, key string) []any {
+	args := req.GetArguments()
+	if v, ok := args[key]; ok {
+		if arr, ok := v.([]any); ok {
+			return arr
 		}
 	}
 	return nil

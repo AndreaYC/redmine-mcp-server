@@ -88,6 +88,8 @@ func (s *Server) setupRoutes() {
 		// Projects
 		r.Get("/projects", s.handleListProjects)
 		r.Post("/projects", s.handleCreateProject)
+		r.Get("/projects/{id}", s.handleGetProject)
+		r.Patch("/projects/{id}", s.handleUpdateProject)
 
 		// Issues
 		r.Get("/issues", s.handleSearchIssues)
@@ -100,6 +102,9 @@ func (s *Server) setupRoutes() {
 
 		// Time entries
 		r.Post("/time_entries", s.handleCreateTimeEntry)
+
+		// Custom Fields
+		r.Get("/custom_fields", s.handleListAllCustomFields)
 
 		// Reference
 		r.Get("/trackers", s.handleListTrackers)
@@ -200,6 +205,66 @@ paths:
       responses:
         '201':
           description: Created project
+  /projects/{id}:
+    get:
+      summary: Get project details
+      tags: [Projects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+      responses:
+        '200':
+          description: Project details with trackers and custom fields
+    patch:
+      summary: Update project settings
+      tags: [Projects]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                tracker_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Tracker names or IDs to enable
+                issue_custom_field_ids:
+                  type: array
+                  items:
+                    type: string
+                  description: Custom field names or IDs to enable
+      responses:
+        '200':
+          description: Project updated
+  /custom_fields:
+    get:
+      summary: List all custom fields (admin)
+      tags: [Custom Fields]
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+          description: "Filter by type: issue, project, user, time_entry, version, group"
+      responses:
+        '200':
+          description: List of custom field definitions
   /issues:
     get:
       summary: Search issues
