@@ -4,11 +4,13 @@ A Model Context Protocol (MCP) server for Redmine, enabling AI assistants (Claud
 
 ## Features
 
-- **18 MCP Tools** for managing issues, projects, time entries
-- **REST API** for ChatGPT GPT Actions
+- **27 MCP Tools** for managing issues, projects, time entries, attachments, and more
+- **REST API** for ChatGPT GPT Actions and scripting
 - **Multiple transport modes**: stdio, SSE, HTTP
 - **Smart name resolution**: Use names instead of IDs (projects, trackers, users, etc.)
-- **Custom fields support**: Pass custom fields by name
+- **Custom fields support**: Pass custom fields by name with auto-correction
+- **Workflow validation**: Status transition validation prevents invalid updates
+- **File attachments**: Upload/download files via base64 (MCP) or multipart form (REST)
 
 ## Quick Start
 
@@ -58,33 +60,46 @@ X-Redmine-API-Key: user-api-key
 
 ## MCP Tools
 
-### Issues
-- `issues.search` - Search issues by project, status, assignee
-- `issues.getById` - Get issue details with journals and relations
-- `issues.create` - Create new issue with custom fields
-- `issues.update` - Update status, assignee, add notes
-- `issues.createSubtask` - Create subtask under parent issue
-- `issues.addWatcher` - Add watcher to issue
-- `issues.addRelation` - Create relation between issues
+### Account
+- `me` - Get current user info
 
 ### Projects
 - `projects.list` - List all projects
 - `projects.create` - Create new project
+- `projects.getDetail` - Get project details (trackers, custom fields)
+- `projects.update` - Update project settings (requires admin/manager)
 
-### Time Entries
-- `timeEntries.create` - Log time on issue (supports `spent_on` for specifying date)
-- `timeEntries.list` - List time entries with filters (project, user, date range)
-- `timeEntries.report` - Generate aggregated time reports
+### Issues
+- `issues.search` - Search issues by project, status, assignee, dates, custom fields
+- `issues.getById` - Get issue details with journals, relations, and attachments
+- `issues.create` - Create new issue with custom fields and attachments
+- `issues.update` - Update status, assignee, add notes, attach files
+- `issues.createSubtask` - Create subtask under parent issue
+- `issues.addWatcher` - Add watcher to issue
+- `issues.addRelation` - Create relation between issues
+- `issues.getRequiredFields` - Get required fields for creating issues
 
 ### Custom Fields
-- `customFields.list` - List available custom fields for a project/tracker
-- `issues.getRequiredFields` - Get required fields for creating issues
+- `customFields.list` - List custom fields for a project/tracker
+- `customFields.listAll` - List all custom field definitions (admin)
+
+### Time Entries
+- `timeEntries.create` - Log time on issue
+- `timeEntries.list` - List time entries with filters
+- `timeEntries.report` - Generate aggregated time reports
+
+### Attachments
+- `attachments.upload` - Upload a file, get upload token
+- `attachments.download` - Download attachment (returns base64)
+- `attachments.list` - List attachments on an issue
+- `attachments.uploadAndAttach` - Upload and attach to issue in one step
 
 ### Reference
 - `trackers.list` - List all trackers
 - `statuses.list` - List all issue statuses
+- `priorities.list` - List all issue priorities
 - `activities.list` - List time entry activities
-- `me` - Get current user info
+- `reference.workflow` - Show workflow transition rules
 
 ## Name Resolution
 
@@ -115,6 +130,77 @@ Pass custom fields by name:
 }
 ```
 
+### Custom Field Validation
+
+When configured with `CUSTOM_FIELD_RULES_FILE`, the server validates custom field values and auto-corrects case mismatches. For example, `"sw tool"` is auto-corrected to `"SW Tool"`.
+
+### Workflow Validation
+
+When configured with `WORKFLOW_RULES_FILE`, the server validates status transitions before sending to Redmine, preventing silent failures from invalid transitions.
+
+## Attachments
+
+### MCP (AI Assistants)
+
+Files are transferred as base64-encoded strings (max 3MB decoded).
+
+**One-step upload and attach (most common):**
+```json
+{
+  "tool": "attachments.uploadAndAttach",
+  "arguments": {
+    "issue_id": 12345,
+    "filename": "report.txt",
+    "content": "SGVsbG8gV29ybGQ=",
+    "description": "Test report"
+  }
+}
+```
+
+**Two-step flow (upload then attach during create/update):**
+```json
+// Step 1: Upload
+{"tool": "attachments.upload", "arguments": {"filename": "report.txt", "content": "SGVsbG8gV29ybGQ="}}
+// Returns: {"token": "abc123", "filename": "report.txt"}
+
+// Step 2: Attach via issues.update
+{"tool": "issues.update", "arguments": {"issue_id": 12345, "upload_tokens": [{"token": "abc123", "filename": "report.txt"}]}}
+```
+
+### REST API (Scripts/Tools)
+
+Files are uploaded via multipart form (max 5MB per file).
+
+**One-step attach:**
+```bash
+curl -X POST http://localhost:8080/api/v1/issues/12345/attach \
+  -H "X-Redmine-API-Key: your-key" \
+  -F "files[]=@report.pdf" \
+  -F "files[]=@screenshot.png" \
+  -F "notes=Attached reports"
+```
+
+**Two-step flow:**
+```bash
+# Step 1: Upload
+curl -X POST http://localhost:8080/api/v1/attachments/upload \
+  -H "X-Redmine-API-Key: your-key" \
+  -F "file=@report.pdf"
+# Returns: {"token": "abc123", "filename": "report.pdf"}
+
+# Step 2: Attach via issue update
+curl -X PATCH http://localhost:8080/api/v1/issues/12345 \
+  -H "X-Redmine-API-Key: your-key" \
+  -H "Content-Type: application/json" \
+  -d '{"upload_tokens": [{"token": "abc123", "filename": "report.pdf"}]}'
+```
+
+**Download:**
+```bash
+curl -o report.pdf http://localhost:8080/api/v1/attachments/42/download \
+  -H "X-Redmine-API-Key: your-key"
+```
+
 ## REST API Endpoints
 
 | Method | Path | Description |
@@ -122,6 +208,8 @@ Pass custom fields by name:
 | GET | `/api/v1/me` | Current user |
 | GET | `/api/v1/projects` | List projects |
 | POST | `/api/v1/projects` | Create project |
+| GET | `/api/v1/projects/:id` | Get project details |
+| PATCH | `/api/v1/projects/:id` | Update project |
 | GET | `/api/v1/issues` | Search issues |
 | GET | `/api/v1/issues/:id` | Get issue |
 | POST | `/api/v1/issues` | Create issue |
@@ -129,7 +217,12 @@ Pass custom fields by name:
 | POST | `/api/v1/issues/:id/subtasks` | Create subtask |
 | POST | `/api/v1/issues/:id/watchers` | Add watcher |
 | POST | `/api/v1/issues/:id/relations` | Add relation |
+| GET | `/api/v1/issues/:id/attachments` | List issue attachments |
+| POST | `/api/v1/issues/:id/attach` | Attach files to issue |
+| POST | `/api/v1/attachments/upload` | Upload file |
+| GET | `/api/v1/attachments/:id/download` | Download attachment |
 | POST | `/api/v1/time_entries` | Create time entry |
+| GET | `/api/v1/custom_fields` | List custom fields (admin) |
 | GET | `/api/v1/trackers` | List trackers |
 | GET | `/api/v1/statuses` | List statuses |
 | GET | `/api/v1/activities` | List activities |
@@ -168,6 +261,8 @@ make docker-build
 | `REDMINE_API_KEY` | API key (stdio mode) | - |
 | `PORT` | HTTP server port | 8080 |
 | `LOG_LEVEL` | Log level (debug/info/warn/error) | info |
+| `CUSTOM_FIELD_RULES_FILE` | Path to custom field validation rules JSON | - |
+| `WORKFLOW_RULES_FILE` | Path to workflow transition rules JSON | - |
 
 ## Client Configuration Examples
 
@@ -297,6 +392,20 @@ When requesting more than 1000 records, the API times out after 30 seconds.
 ### Journals
 **2026-01-20 - jane.smith:**
 > Increased timeout to 60 seconds, but issue persists with 5000+ records.
+```
+
+### Upload and Attach File
+
+```
+User: 把這個測試報告附加到 #12345
+
+Claude: [Calls attachments.uploadAndAttach with issue_id=12345,
+         filename="test_report.txt", content="<base64>"]
+
+Result:
+File uploaded and attached to issue #12345 successfully.
+- Filename: test_report.txt
+- Size: 1,234 bytes
 ```
 
 ### Log Time Entry

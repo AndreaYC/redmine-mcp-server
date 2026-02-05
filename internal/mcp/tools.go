@@ -1,7 +1,10 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -190,6 +193,10 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		mcp.WithBoolean("is_private",
 			mcp.Description("Whether the issue is private"),
 		),
+		mcp.WithArray("upload_tokens",
+			mcp.Description("Upload tokens from attachments.upload to attach files (array of {token, filename, content_type, description})"),
+			mcp.Items(map[string]any{"type": "object"}),
+		),
 	), h.handleIssuesCreate)
 
 	s.AddTool(mcp.NewTool("issues.update",
@@ -233,6 +240,10 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 		mcp.WithBoolean("is_private",
 			mcp.Description("Whether the issue is private"),
+		),
+		mcp.WithArray("upload_tokens",
+			mcp.Description("Upload tokens from attachments.upload to attach files (array of {token, filename, content_type, description})"),
+			mcp.Items(map[string]any{"type": "object"}),
 		),
 	), h.handleIssuesUpdate)
 
@@ -395,6 +406,63 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		mcp.WithString("group_by", mcp.Required(), mcp.Description("Grouping: project, user, activity, or comma-separated combination")),
 	), h.handleTimeEntriesReport)
 
+	// Attachments
+	s.AddTool(mcp.NewTool("attachments.upload",
+		mcp.WithDescription("Upload a file to Redmine and get an upload token. Use the token with issues.create or issues.update to attach the file."),
+		mcp.WithString("filename",
+			mcp.Required(),
+			mcp.Description("Filename (e.g., 'report.pdf')"),
+		),
+		mcp.WithString("content",
+			mcp.Required(),
+			mcp.Description("File content as base64-encoded string (max 3MB decoded)"),
+		),
+		mcp.WithString("content_type",
+			mcp.Description("MIME type (e.g., 'application/pdf'). Auto-detected if omitted."),
+		),
+	), h.handleAttachmentsUpload)
+
+	s.AddTool(mcp.NewTool("attachments.download",
+		mcp.WithDescription("Download an attachment by ID. Returns base64-encoded content."),
+		mcp.WithNumber("attachment_id",
+			mcp.Required(),
+			mcp.Description("Attachment ID"),
+		),
+	), h.handleAttachmentsDownload)
+
+	s.AddTool(mcp.NewTool("attachments.list",
+		mcp.WithDescription("List attachments on an issue"),
+		mcp.WithNumber("issue_id",
+			mcp.Required(),
+			mcp.Description("Issue ID"),
+		),
+	), h.handleAttachmentsList)
+
+	s.AddTool(mcp.NewTool("attachments.uploadAndAttach",
+		mcp.WithDescription("Upload a file and attach it to an issue in one step. Most common use case for adding attachments."),
+		mcp.WithNumber("issue_id",
+			mcp.Required(),
+			mcp.Description("Issue ID to attach the file to"),
+		),
+		mcp.WithString("filename",
+			mcp.Required(),
+			mcp.Description("Filename (e.g., 'report.pdf')"),
+		),
+		mcp.WithString("content",
+			mcp.Required(),
+			mcp.Description("File content as base64-encoded string (max 3MB decoded)"),
+		),
+		mcp.WithString("content_type",
+			mcp.Description("MIME type (e.g., 'application/pdf'). Auto-detected if omitted."),
+		),
+		mcp.WithString("description",
+			mcp.Description("File description"),
+		),
+		mcp.WithString("notes",
+			mcp.Description("Notes/comment to add to the issue along with the attachment"),
+		),
+	), h.handleAttachmentsUploadAndAttach)
+
 	// Reference
 	s.AddTool(mcp.NewTool("trackers.list",
 		mcp.WithDescription("List all trackers"),
@@ -418,6 +486,265 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Description("Tracker name or ID (optional, shows all trackers if omitted)"),
 		),
 	), h.handleReferenceWorkflow)
+
+	// --- Group A: CRUD Gaps ---
+
+	s.AddTool(mcp.NewTool("timeEntries.update",
+		mcp.WithDescription("Update an existing time entry"),
+		mcp.WithNumber("time_entry_id",
+			mcp.Required(),
+			mcp.Description("Time entry ID"),
+		),
+		mcp.WithNumber("hours",
+			mcp.Description("Hours spent"),
+		),
+		mcp.WithString("activity",
+			mcp.Description("Activity name or ID"),
+		),
+		mcp.WithString("comments",
+			mcp.Description("Comments"),
+		),
+		mcp.WithString("spent_on",
+			mcp.Description("Date the time was spent (YYYY-MM-DD)"),
+		),
+	), h.handleTimeEntriesUpdate)
+
+	s.AddTool(mcp.NewTool("timeEntries.delete",
+		mcp.WithDescription("Delete a time entry"),
+		mcp.WithNumber("time_entry_id",
+			mcp.Required(),
+			mcp.Description("Time entry ID"),
+		),
+	), h.handleTimeEntriesDelete)
+
+	s.AddTool(mcp.NewTool("issues.removeWatcher",
+		mcp.WithDescription("Remove a watcher from an issue"),
+		mcp.WithNumber("issue_id",
+			mcp.Required(),
+			mcp.Description("Issue ID"),
+		),
+		mcp.WithString("user",
+			mcp.Required(),
+			mcp.Description("User name or ID to remove as watcher"),
+		),
+	), h.handleIssuesRemoveWatcher)
+
+	s.AddTool(mcp.NewTool("issues.removeRelation",
+		mcp.WithDescription("Remove a relation between issues"),
+		mcp.WithNumber("relation_id",
+			mcp.Required(),
+			mcp.Description("Relation ID"),
+		),
+	), h.handleIssuesRemoveRelation)
+
+	// --- Group E: User Search ---
+
+	s.AddTool(mcp.NewTool("users.search",
+		mcp.WithDescription("Search for users by name, project membership, or status"),
+		mcp.WithString("name",
+			mcp.Description("Search by user name (partial match)"),
+		),
+		mcp.WithString("project",
+			mcp.Description("Project name or ID to search within"),
+		),
+		mcp.WithNumber("status",
+			mcp.Description("1=active, 2=registered, 3=locked"),
+		),
+		mcp.WithNumber("limit",
+			mcp.Description("Number of results to return (default: 25)"),
+		),
+	), h.handleUsersSearch)
+
+	// --- Group B: Batch & Copy ---
+
+	s.AddTool(mcp.NewTool("issues.batchUpdate",
+		mcp.WithDescription("Update multiple issues at once. Continues on individual failures (partial success)."),
+		mcp.WithArray("issue_ids",
+			mcp.Required(),
+			mcp.Description("Array of issue IDs to update"),
+			mcp.Items(map[string]any{"type": "number"}),
+		),
+		mcp.WithString("status",
+			mcp.Description("New status name or ID"),
+		),
+		mcp.WithString("assigned_to",
+			mcp.Description("New assignee name or ID"),
+		),
+		mcp.WithString("priority",
+			mcp.Description("New priority name or ID"),
+		),
+		mcp.WithString("notes",
+			mcp.Description("Notes/comment to add to each issue"),
+		),
+	), h.handleIssuesBatchUpdate)
+
+	s.AddTool(mcp.NewTool("issues.copy",
+		mcp.WithDescription("Copy an issue, optionally to a different project or with a new subject"),
+		mcp.WithNumber("issue_id",
+			mcp.Required(),
+			mcp.Description("Source issue ID to copy"),
+		),
+		mcp.WithString("project",
+			mcp.Description("Target project name or ID (defaults to same project)"),
+		),
+		mcp.WithString("subject",
+			mcp.Description("Override subject for the copy (defaults to source subject)"),
+		),
+	), h.handleIssuesCopy)
+
+	// --- Group C: Versions ---
+
+	s.AddTool(mcp.NewTool("versions.list",
+		mcp.WithDescription("List all versions/milestones for a project"),
+		mcp.WithString("project",
+			mcp.Required(),
+			mcp.Description("Project name or ID"),
+		),
+	), h.handleVersionsList)
+
+	s.AddTool(mcp.NewTool("versions.create",
+		mcp.WithDescription("Create a new version/milestone in a project"),
+		mcp.WithString("project",
+			mcp.Required(),
+			mcp.Description("Project name or ID"),
+		),
+		mcp.WithString("name",
+			mcp.Required(),
+			mcp.Description("Version name"),
+		),
+		mcp.WithString("description",
+			mcp.Description("Version description"),
+		),
+		mcp.WithString("status",
+			mcp.Description("Version status"),
+			mcp.Enum("open", "locked", "closed"),
+		),
+		mcp.WithString("due_date",
+			mcp.Description("Due date (YYYY-MM-DD)"),
+		),
+		mcp.WithString("sharing",
+			mcp.Description("Sharing scope"),
+			mcp.Enum("none", "descendants", "hierarchy", "tree", "system"),
+		),
+	), h.handleVersionsCreate)
+
+	s.AddTool(mcp.NewTool("versions.update",
+		mcp.WithDescription("Update an existing version/milestone"),
+		mcp.WithNumber("version_id",
+			mcp.Required(),
+			mcp.Description("Version ID"),
+		),
+		mcp.WithString("name",
+			mcp.Description("Version name"),
+		),
+		mcp.WithString("description",
+			mcp.Description("Version description"),
+		),
+		mcp.WithString("status",
+			mcp.Description("Version status"),
+			mcp.Enum("open", "locked", "closed"),
+		),
+		mcp.WithString("due_date",
+			mcp.Description("Due date (YYYY-MM-DD)"),
+		),
+		mcp.WithString("sharing",
+			mcp.Description("Sharing scope"),
+			mcp.Enum("none", "descendants", "hierarchy", "tree", "system"),
+		),
+	), h.handleVersionsUpdate)
+
+	// --- Group D: Wiki ---
+
+	s.AddTool(mcp.NewTool("wiki.list",
+		mcp.WithDescription("List all wiki pages for a project"),
+		mcp.WithString("project",
+			mcp.Required(),
+			mcp.Description("Project name or ID"),
+		),
+	), h.handleWikiList)
+
+	s.AddTool(mcp.NewTool("wiki.get",
+		mcp.WithDescription("Get a wiki page with its content"),
+		mcp.WithString("project",
+			mcp.Required(),
+			mcp.Description("Project name or ID"),
+		),
+		mcp.WithString("title",
+			mcp.Required(),
+			mcp.Description("Wiki page title"),
+		),
+	), h.handleWikiGet)
+
+	s.AddTool(mcp.NewTool("wiki.createOrUpdate",
+		mcp.WithDescription("Create or update a wiki page"),
+		mcp.WithString("project",
+			mcp.Required(),
+			mcp.Description("Project name or ID"),
+		),
+		mcp.WithString("title",
+			mcp.Required(),
+			mcp.Description("Wiki page title"),
+		),
+		mcp.WithString("text",
+			mcp.Required(),
+			mcp.Description("Wiki page content (Textile or Markdown depending on Redmine config)"),
+		),
+		mcp.WithString("comments",
+			mcp.Description("Edit comment / version note"),
+		),
+	), h.handleWikiCreateOrUpdate)
+
+	// --- Group F: Export ---
+
+	s.AddTool(mcp.NewTool("issues.exportCSV",
+		mcp.WithDescription("Export issues as CSV text. Same filters as issues.search."),
+		mcp.WithString("project",
+			mcp.Description("Project name or ID"),
+		),
+		mcp.WithString("tracker",
+			mcp.Description("Tracker name or ID"),
+		),
+		mcp.WithString("status",
+			mcp.Description("Status: open, closed, all, or specific status name"),
+		),
+		mcp.WithString("assigned_to",
+			mcp.Description("Assignee name or 'me' for current user"),
+		),
+		mcp.WithString("subject",
+			mcp.Description("Search keyword in issue subject (partial match)"),
+		),
+		mcp.WithString("sort",
+			mcp.Description("Sort order (e.g., 'updated_on:desc')"),
+		),
+		mcp.WithNumber("limit",
+			mcp.Description("Number of issues to return (default: 25)"),
+		),
+		mcp.WithNumber("offset",
+			mcp.Description("Offset for pagination (default: 0)"),
+		),
+	), h.handleIssuesExportCSV)
+
+	// --- Group G: Reports ---
+
+	s.AddTool(mcp.NewTool("reports.weekly",
+		mcp.WithDescription("Generate a weekly time report aggregated by day, issue, and activity"),
+		mcp.WithString("user",
+			mcp.Description("User name or ID (default: 'me')"),
+		),
+		mcp.WithString("week_of",
+			mcp.Description("Any date within the target week (YYYY-MM-DD, defaults to current week)"),
+		),
+	), h.handleReportsWeekly)
+
+	s.AddTool(mcp.NewTool("reports.standup",
+		mcp.WithDescription("Generate a standup report: yesterday's time entries + today's open issues"),
+		mcp.WithString("user",
+			mcp.Description("User name or ID (default: 'me')"),
+		),
+		mcp.WithString("date",
+			mcp.Description("Date for the standup (YYYY-MM-DD, defaults to today)"),
+		),
+	), h.handleReportsStandup)
 }
 
 // McpServer interface for registering tools
@@ -707,6 +1034,14 @@ func (h *ToolHandlers) handleIssuesCreate(ctx context.Context, req mcp.CallToolR
 		params.CustomFields = resolved
 	}
 
+	if tokens := getArrayArg(req, "upload_tokens"); tokens != nil {
+		uploads, err := parseUploadTokens(tokens)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		params.Uploads = uploads
+	}
+
 	issue, err := h.client.CreateIssue(params)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to create issue: %v", err)), nil
@@ -795,6 +1130,14 @@ func (h *ToolHandlers) handleIssuesUpdate(ctx context.Context, req mcp.CallToolR
 			return mcp.NewToolResultError(err.Error()), nil
 		}
 		params.CustomFields = resolved
+	}
+
+	if tokens := getArrayArg(req, "upload_tokens"); tokens != nil {
+		uploads, err := parseUploadTokens(tokens)
+		if err != nil {
+			return mcp.NewToolResultError(err.Error()), nil
+		}
+		params.Uploads = uploads
 	}
 
 	if err := h.client.UpdateIssue(params); err != nil {
@@ -1507,6 +1850,157 @@ func (h *ToolHandlers) handleTimeEntriesReport(ctx context.Context, req mcp.Call
 	return jsonResult(result)
 }
 
+const maxMCPAttachmentSize = 3 * 1024 * 1024 // 3MB decoded
+
+func (h *ToolHandlers) handleAttachmentsUpload(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	filename, err := req.RequireString("filename")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	contentB64, err := req.RequireString("content")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(contentB64)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid base64 content: %v", err)), nil
+	}
+
+	if len(decoded) > maxMCPAttachmentSize {
+		return mcp.NewToolResultError(fmt.Sprintf("File too large: %d bytes (max %d bytes / 3MB)", len(decoded), maxMCPAttachmentSize)), nil
+	}
+
+	token, err := h.client.UploadFile(filename, bytes.NewReader(decoded))
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to upload file: %v", err)), nil
+	}
+
+	contentType := req.GetString("content_type", "")
+	if contentType != "" {
+		token.ContentType = contentType
+	}
+
+	return jsonResult(map[string]any{
+		"token":    token.Token,
+		"filename": token.Filename,
+		"size":     len(decoded),
+		"message":  "File uploaded. Use the token with issues.create or issues.update to attach it.",
+	})
+}
+
+func (h *ToolHandlers) handleAttachmentsDownload(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	idFloat, err := req.RequireFloat("attachment_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	attachmentID := int(idFloat)
+
+	data, contentType, filename, err := h.client.DownloadAttachment(attachmentID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to download attachment: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"attachment_id": attachmentID,
+		"filename":      filename,
+		"content_type":  contentType,
+		"size":          len(data),
+		"content":       base64.StdEncoding.EncodeToString(data),
+	})
+}
+
+func (h *ToolHandlers) handleAttachmentsList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	idFloat, err := req.RequireFloat("issue_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	issueID := int(idFloat)
+
+	issue, err := h.client.GetIssue(issueID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get issue: %v", err)), nil
+	}
+
+	attachments := make([]map[string]any, len(issue.Attachments))
+	for i, a := range issue.Attachments {
+		attachments[i] = map[string]any{
+			"id":           a.ID,
+			"filename":     a.Filename,
+			"filesize":     a.Filesize,
+			"content_type": a.ContentType,
+			"description":  a.Description,
+			"created_on":   a.CreatedOn,
+			"author":       map[string]any{"id": a.Author.ID, "name": a.Author.Name},
+		}
+	}
+
+	return jsonResult(map[string]any{
+		"issue_id":    issueID,
+		"attachments": attachments,
+		"count":       len(attachments),
+	})
+}
+
+func (h *ToolHandlers) handleAttachmentsUploadAndAttach(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	issueIDFloat, err := req.RequireFloat("issue_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	issueID := int(issueIDFloat)
+
+	filename, err := req.RequireString("filename")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	contentB64, err := req.RequireString("content")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(contentB64)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Invalid base64 content: %v", err)), nil
+	}
+
+	if len(decoded) > maxMCPAttachmentSize {
+		return mcp.NewToolResultError(fmt.Sprintf("File too large: %d bytes (max %d bytes / 3MB)", len(decoded), maxMCPAttachmentSize)), nil
+	}
+
+	// Step 1: Upload
+	token, err := h.client.UploadFile(filename, bytes.NewReader(decoded))
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to upload file: %v", err)), nil
+	}
+
+	contentType := req.GetString("content_type", "")
+	if contentType != "" {
+		token.ContentType = contentType
+	}
+	token.Description = req.GetString("description", "")
+
+	// Step 2: Attach to issue
+	params := redmine.UpdateIssueParams{
+		IssueID: issueID,
+		Notes:   req.GetString("notes", ""),
+		Uploads: []redmine.UploadToken{*token},
+	}
+
+	if err := h.client.UpdateIssue(params); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("File uploaded (token: %s) but failed to attach to issue: %v", token.Token, err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success":  true,
+		"issue_id": issueID,
+		"filename": filename,
+		"size":     len(decoded),
+		"message":  "File uploaded and attached to issue successfully",
+	})
+}
+
 func (h *ToolHandlers) handleTrackersList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	trackers, err := h.resolver.GetTrackers()
 	if err != nil {
@@ -1624,6 +2118,923 @@ func (h *ToolHandlers) handleReferenceWorkflow(ctx context.Context, req mcp.Call
 	return jsonResult(map[string]any{
 		"trackers": trackers,
 		"count":    len(trackers),
+	})
+}
+
+// --- Group A: CRUD Gaps ---
+
+func (h *ToolHandlers) handleTimeEntriesUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	idFloat, err := req.RequireFloat("time_entry_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	timeEntryID := int(idFloat)
+
+	params := redmine.UpdateTimeEntryParams{
+		TimeEntryID: timeEntryID,
+	}
+
+	if args := req.GetArguments(); args != nil {
+		if v, ok := args["hours"]; ok {
+			if f, ok := v.(float64); ok {
+				params.Hours = f
+			}
+		}
+	}
+
+	if activity := req.GetString("activity", ""); activity != "" {
+		activityID, err := h.resolver.ResolveActivity(activity)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve activity: %v", err)), nil
+		}
+		params.ActivityID = activityID
+	}
+
+	params.Comments = req.GetString("comments", "")
+	params.SpentOn = req.GetString("spent_on", "")
+
+	if err := h.client.UpdateTimeEntry(params); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to update time entry: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success":       true,
+		"time_entry_id": timeEntryID,
+		"message":       "Time entry updated successfully",
+	})
+}
+
+func (h *ToolHandlers) handleTimeEntriesDelete(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	idFloat, err := req.RequireFloat("time_entry_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	timeEntryID := int(idFloat)
+
+	if err := h.client.DeleteTimeEntry(timeEntryID); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete time entry: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success":       true,
+		"time_entry_id": timeEntryID,
+		"message":       "Time entry deleted successfully",
+	})
+}
+
+func (h *ToolHandlers) handleIssuesRemoveWatcher(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	issueIDFloat, err := req.RequireFloat("issue_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	issueID := int(issueIDFloat)
+
+	user, err := req.RequireString("user")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	// Get issue to resolve project context
+	issue, err := h.client.GetIssue(issueID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get issue: %v", err)), nil
+	}
+
+	userID, err := h.resolver.ResolveUser(user, issue.Project.ID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve user: %v", err)), nil
+	}
+
+	if err := h.client.RemoveWatcher(issueID, userID); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to remove watcher: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success":  true,
+		"issue_id": issueID,
+		"user_id":  userID,
+		"message":  "Watcher removed successfully",
+	})
+}
+
+func (h *ToolHandlers) handleIssuesRemoveRelation(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	idFloat, err := req.RequireFloat("relation_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	relationID := int(idFloat)
+
+	if err := h.client.DeleteRelation(relationID); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to remove relation: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success":     true,
+		"relation_id": relationID,
+		"message":     "Relation removed successfully",
+	})
+}
+
+// --- Group E: User Search ---
+
+func (h *ToolHandlers) handleUsersSearch(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	params := redmine.SearchUsersParams{}
+
+	params.Name = req.GetString("name", "")
+
+	if project := req.GetString("project", ""); project != "" {
+		projectID, err := h.resolver.ResolveProject(project)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+		}
+		params.ProjectID = projectID
+	}
+
+	params.Status = req.GetInt("status", 0)
+	params.Limit = req.GetInt("limit", 25)
+
+	users, total, err := h.client.SearchUsers(params)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to search users: %v", err)), nil
+	}
+
+	results := make([]map[string]any, len(users))
+	for i, u := range users {
+		result := map[string]any{
+			"id":   u.ID,
+			"name": u.Name,
+		}
+		if u.Login != "" {
+			result["login"] = u.Login
+		}
+		if u.Mail != "" {
+			result["email"] = u.Mail
+		}
+		results[i] = result
+	}
+
+	return jsonResult(map[string]any{
+		"users":       results,
+		"count":       len(users),
+		"total_count": total,
+	})
+}
+
+// --- Group B: Batch & Copy ---
+
+func (h *ToolHandlers) handleIssuesBatchUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	issueIDsRaw := getArrayArg(req, "issue_ids")
+	if issueIDsRaw == nil || len(issueIDsRaw) == 0 {
+		return mcp.NewToolResultError("issue_ids is required and must be a non-empty array"), nil
+	}
+
+	// Parse issue IDs
+	issueIDs := make([]int, 0, len(issueIDsRaw))
+	for _, raw := range issueIDsRaw {
+		if f, ok := raw.(float64); ok {
+			issueIDs = append(issueIDs, int(f))
+		} else {
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid issue ID: %v", raw)), nil
+		}
+	}
+
+	// Pre-resolve common fields once
+	var statusID int
+	if status := req.GetString("status", ""); status != "" {
+		var err error
+		statusID, err = h.resolver.ResolveStatusID(status)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve status: %v", err)), nil
+		}
+	}
+
+	var priorityID int
+	if priority := req.GetString("priority", ""); priority != "" {
+		var err error
+		priorityID, err = h.resolver.ResolvePriority(priority)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve priority: %v", err)), nil
+		}
+	}
+
+	notes := req.GetString("notes", "")
+	assignedToStr := req.GetString("assigned_to", "")
+
+	// Process each issue
+	var successIDs []int
+	var failures []map[string]any
+
+	for _, issueID := range issueIDs {
+		params := redmine.UpdateIssueParams{
+			IssueID:    issueID,
+			StatusID:   statusID,
+			PriorityID: priorityID,
+			Notes:      notes,
+		}
+
+		// Resolve assigned_to per issue (needs project context)
+		if assignedToStr != "" {
+			issue, err := h.client.GetIssue(issueID)
+			if err != nil {
+				failures = append(failures, map[string]any{
+					"id":    issueID,
+					"error": fmt.Sprintf("Failed to get issue: %v", err),
+				})
+				continue
+			}
+
+			// Validate status transition if status is being changed
+			if statusID > 0 && h.workflow != nil {
+				if err := h.workflow.ValidateTransition(issue.Tracker.ID, issue.Status.ID, statusID); err != nil {
+					failures = append(failures, map[string]any{
+						"id":    issueID,
+						"error": fmt.Sprintf("Invalid status transition: %v", err),
+					})
+					continue
+				}
+			}
+
+			if assignedToStr == "me" {
+				user, err := h.client.GetCurrentUser()
+				if err != nil {
+					failures = append(failures, map[string]any{
+						"id":    issueID,
+						"error": fmt.Sprintf("Failed to get current user: %v", err),
+					})
+					continue
+				}
+				params.AssignedToID = user.ID
+			} else {
+				userID, err := h.resolver.ResolveUser(assignedToStr, issue.Project.ID)
+				if err != nil {
+					failures = append(failures, map[string]any{
+						"id":    issueID,
+						"error": fmt.Sprintf("Failed to resolve assignee: %v", err),
+					})
+					continue
+				}
+				params.AssignedToID = userID
+			}
+		} else if statusID > 0 && h.workflow != nil {
+			// Still need to validate status transition
+			issue, err := h.client.GetIssue(issueID)
+			if err != nil {
+				failures = append(failures, map[string]any{
+					"id":    issueID,
+					"error": fmt.Sprintf("Failed to get issue: %v", err),
+				})
+				continue
+			}
+			if err := h.workflow.ValidateTransition(issue.Tracker.ID, issue.Status.ID, statusID); err != nil {
+				failures = append(failures, map[string]any{
+					"id":    issueID,
+					"error": fmt.Sprintf("Invalid status transition: %v", err),
+				})
+				continue
+			}
+		}
+
+		if err := h.client.UpdateIssue(params); err != nil {
+			failures = append(failures, map[string]any{
+				"id":    issueID,
+				"error": fmt.Sprintf("Failed to update: %v", err),
+			})
+			continue
+		}
+
+		successIDs = append(successIDs, issueID)
+	}
+
+	return jsonResult(map[string]any{
+		"success": successIDs,
+		"failed":  failures,
+	})
+}
+
+func (h *ToolHandlers) handleIssuesCopy(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	issueIDFloat, err := req.RequireFloat("issue_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	sourceID := int(issueIDFloat)
+
+	// Get source issue
+	source, err := h.client.GetIssue(sourceID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get source issue: %v", err)), nil
+	}
+
+	// Determine target project
+	targetProjectID := source.Project.ID
+	if project := req.GetString("project", ""); project != "" {
+		targetProjectID, err = h.resolver.ResolveProject(project)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve target project: %v", err)), nil
+		}
+	}
+
+	// Build create params from source issue
+	subject := source.Subject
+	if overrideSubject := req.GetString("subject", ""); overrideSubject != "" {
+		subject = overrideSubject
+	}
+
+	params := redmine.CreateIssueParams{
+		ProjectID:   targetProjectID,
+		TrackerID:   source.Tracker.ID,
+		Subject:     subject,
+		Description: source.Description,
+		PriorityID:  source.Priority.ID,
+		StartDate:   source.StartDate,
+		DueDate:     source.DueDate,
+	}
+
+	if source.AssignedTo != nil {
+		params.AssignedToID = source.AssignedTo.ID
+	}
+
+	// Copy custom fields
+	if len(source.CustomFields) > 0 {
+		cfMap := make(map[string]any)
+		for _, cf := range source.CustomFields {
+			if cf.Value != nil && cf.Value != "" {
+				cfMap[strconv.Itoa(cf.ID)] = cf.Value
+			}
+		}
+		if len(cfMap) > 0 {
+			params.CustomFields = cfMap
+		}
+	}
+
+	newIssue, err := h.client.CreateIssue(params)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to create copy: %v", err)), nil
+	}
+
+	return jsonResult(formatIssue(*newIssue))
+}
+
+// --- Group C: Versions ---
+
+func (h *ToolHandlers) handleVersionsList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projectStr, err := req.RequireString("project")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectID, err := h.resolver.ResolveProject(projectStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+	}
+
+	versions, err := h.client.ListVersions(projectID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to list versions: %v", err)), nil
+	}
+
+	results := make([]map[string]any, len(versions))
+	for i, v := range versions {
+		results[i] = map[string]any{
+			"id":          v.ID,
+			"name":        v.Name,
+			"description": v.Description,
+			"status":      v.Status,
+			"due_date":    v.DueDate,
+			"sharing":     v.Sharing,
+			"created_on":  v.CreatedOn,
+			"updated_on":  v.UpdatedOn,
+		}
+	}
+
+	return jsonResult(map[string]any{
+		"versions": results,
+		"count":    len(versions),
+	})
+}
+
+func (h *ToolHandlers) handleVersionsCreate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projectStr, err := req.RequireString("project")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	name, err := req.RequireString("name")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectID, err := h.resolver.ResolveProject(projectStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+	}
+
+	params := redmine.CreateVersionParams{
+		ProjectID:   projectID,
+		Name:        name,
+		Description: req.GetString("description", ""),
+		Status:      req.GetString("status", ""),
+		DueDate:     req.GetString("due_date", ""),
+		Sharing:     req.GetString("sharing", ""),
+	}
+
+	version, err := h.client.CreateVersion(params)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to create version: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"id":          version.ID,
+		"name":        version.Name,
+		"description": version.Description,
+		"status":      version.Status,
+		"due_date":    version.DueDate,
+		"sharing":     version.Sharing,
+		"created_on":  version.CreatedOn,
+	})
+}
+
+func (h *ToolHandlers) handleVersionsUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	idFloat, err := req.RequireFloat("version_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	versionID := int(idFloat)
+
+	params := redmine.UpdateVersionParams{
+		VersionID:   versionID,
+		Name:        req.GetString("name", ""),
+		Description: req.GetString("description", ""),
+		Status:      req.GetString("status", ""),
+		DueDate:     req.GetString("due_date", ""),
+		Sharing:     req.GetString("sharing", ""),
+	}
+
+	if err := h.client.UpdateVersion(params); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to update version: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success":    true,
+		"version_id": versionID,
+		"message":    "Version updated successfully",
+	})
+}
+
+// --- Group D: Wiki ---
+
+func (h *ToolHandlers) handleWikiList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projectStr, err := req.RequireString("project")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectID, err := h.resolver.ResolveProject(projectStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+	}
+
+	pages, err := h.client.ListWikiPages(projectID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to list wiki pages: %v", err)), nil
+	}
+
+	results := make([]map[string]any, len(pages))
+	for i, p := range pages {
+		results[i] = map[string]any{
+			"title":      p.Title,
+			"version":    p.Version,
+			"created_on": p.CreatedOn,
+			"updated_on": p.UpdatedOn,
+		}
+	}
+
+	return jsonResult(map[string]any{
+		"wiki_pages": results,
+		"count":      len(pages),
+	})
+}
+
+func (h *ToolHandlers) handleWikiGet(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projectStr, err := req.RequireString("project")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	title, err := req.RequireString("title")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectID, err := h.resolver.ResolveProject(projectStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+	}
+
+	page, err := h.client.GetWikiPage(projectID, title)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get wiki page: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"title":      page.Title,
+		"text":       page.Text,
+		"version":    page.Version,
+		"author":     map[string]any{"id": page.Author.ID, "name": page.Author.Name},
+		"comments":   page.Comments,
+		"created_on": page.CreatedOn,
+		"updated_on": page.UpdatedOn,
+	})
+}
+
+func (h *ToolHandlers) handleWikiCreateOrUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projectStr, err := req.RequireString("project")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	title, err := req.RequireString("title")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	text, err := req.RequireString("text")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectID, err := h.resolver.ResolveProject(projectStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+	}
+
+	params := redmine.WikiPageParams{
+		ProjectID: projectID,
+		Title:     title,
+		Text:      text,
+		Comments:  req.GetString("comments", ""),
+	}
+
+	if err := h.client.CreateOrUpdateWikiPage(params); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to create/update wiki page: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success": true,
+		"title":   title,
+		"message": "Wiki page created/updated successfully",
+	})
+}
+
+// --- Group F: Export ---
+
+func (h *ToolHandlers) handleIssuesExportCSV(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Build search params (same logic as handleIssuesSearch)
+	params := redmine.SearchIssuesParams{}
+
+	if project := req.GetString("project", ""); project != "" {
+		projectID, err := h.resolver.ResolveProject(project)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+		}
+		params.ProjectID = strconv.Itoa(projectID)
+	}
+
+	if tracker := req.GetString("tracker", ""); tracker != "" {
+		trackerID, err := h.resolver.ResolveTracker(tracker)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve tracker: %v", err)), nil
+		}
+		params.TrackerID = trackerID
+	}
+
+	if status := req.GetString("status", ""); status != "" {
+		statusID, err := h.resolver.ResolveStatus(status)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve status: %v", err)), nil
+		}
+		params.StatusID = statusID
+	} else {
+		params.StatusID = "open"
+	}
+
+	if assignedTo := req.GetString("assigned_to", ""); assignedTo != "" {
+		if assignedTo == "me" {
+			params.AssignedToID = "me"
+		} else {
+			var projectID int
+			if params.ProjectID != "" {
+				projectID, _ = strconv.Atoi(params.ProjectID)
+			}
+			userID, err := h.resolver.ResolveUser(assignedTo, projectID)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve user: %v", err)), nil
+			}
+			params.AssignedToID = strconv.Itoa(userID)
+		}
+	}
+
+	params.Subject = req.GetString("subject", "")
+	params.Sort = req.GetString("sort", "")
+	params.Limit = req.GetInt("limit", 25)
+	params.Offset = req.GetInt("offset", 0)
+
+	issues, _, err := h.client.SearchIssues(params)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to search issues: %v", err)), nil
+	}
+
+	// Write CSV
+	var buf bytes.Buffer
+	writer := csv.NewWriter(&buf)
+
+	// Header
+	_ = writer.Write([]string{"ID", "Subject", "Project", "Tracker", "Status", "Priority", "Assignee", "Created", "Updated"})
+
+	for _, issue := range issues {
+		assignee := ""
+		if issue.AssignedTo != nil {
+			assignee = issue.AssignedTo.Name
+		}
+		_ = writer.Write([]string{
+			strconv.Itoa(issue.ID),
+			issue.Subject,
+			issue.Project.Name,
+			issue.Tracker.Name,
+			issue.Status.Name,
+			issue.Priority.Name,
+			assignee,
+			issue.CreatedOn,
+			issue.UpdatedOn,
+		})
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to write CSV: %v", err)), nil
+	}
+
+	return mcp.NewToolResultText(buf.String()), nil
+}
+
+// --- Group G: Reports ---
+
+func (h *ToolHandlers) handleReportsWeekly(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Resolve user
+	userStr := req.GetString("user", "me")
+	userID := "me"
+	var userName string
+
+	if userStr == "me" {
+		user, err := h.client.GetCurrentUser()
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to get current user: %v", err)), nil
+		}
+		userName = user.Firstname + " " + user.Lastname
+	} else {
+		resolvedID, err := h.resolver.ResolveUser(userStr, 0)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve user: %v", err)), nil
+		}
+		userID = strconv.Itoa(resolvedID)
+		userName = userStr
+	}
+
+	// Calculate Monday-Friday of the target week
+	now := time.Now()
+	if weekOf := req.GetString("week_of", ""); weekOf != "" {
+		parsed, err := time.Parse("2006-01-02", weekOf)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid date format for week_of: %v", err)), nil
+		}
+		now = parsed
+	}
+
+	weekday := int(now.Weekday())
+	if weekday == 0 {
+		weekday = 7
+	}
+	monday := now.AddDate(0, 0, -weekday+1)
+	friday := monday.AddDate(0, 0, 4)
+
+	fromDate := monday.Format("2006-01-02")
+	toDate := friday.Format("2006-01-02")
+
+	// Fetch time entries for the week
+	teParams := redmine.ListTimeEntriesParams{
+		UserID: userID,
+		From:   fromDate,
+		To:     toDate,
+		Limit:  100,
+	}
+
+	var allEntries []redmine.TimeEntry
+	for {
+		entries, _, err := h.client.ListTimeEntries(teParams)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to fetch time entries: %v", err)), nil
+		}
+		allEntries = append(allEntries, entries...)
+		if len(entries) < teParams.Limit {
+			break
+		}
+		teParams.Offset += teParams.Limit
+	}
+
+	// Aggregate by day
+	byDay := make(map[string]float64)
+	// Initialize all weekdays
+	for i := 0; i < 5; i++ {
+		day := monday.AddDate(0, 0, i).Format("2006-01-02")
+		byDay[day] = 0
+	}
+
+	// Aggregate by issue
+	type issueAgg struct {
+		Subject string
+		Hours   float64
+	}
+	byIssue := make(map[int]*issueAgg)
+
+	// Aggregate by activity
+	byActivity := make(map[string]float64)
+
+	var totalHours float64
+	for _, entry := range allEntries {
+		byDay[entry.SpentOn] += entry.Hours
+		totalHours += entry.Hours
+
+		if entry.Issue != nil {
+			if agg, ok := byIssue[entry.Issue.ID]; ok {
+				agg.Hours += entry.Hours
+			} else {
+				byIssue[entry.Issue.ID] = &issueAgg{
+					Subject: entry.Issue.Name,
+					Hours:   entry.Hours,
+				}
+			}
+		}
+
+		byActivity[entry.Activity.Name] += entry.Hours
+	}
+
+	// Build by_day result (sorted)
+	dayKeys := make([]string, 0, len(byDay))
+	for k := range byDay {
+		dayKeys = append(dayKeys, k)
+	}
+	sort.Strings(dayKeys)
+
+	byDayResult := make([]map[string]any, len(dayKeys))
+	for i, date := range dayKeys {
+		byDayResult[i] = map[string]any{
+			"date":  date,
+			"hours": byDay[date],
+		}
+	}
+
+	// Build by_issue result
+	byIssueResult := make([]map[string]any, 0, len(byIssue))
+	for id, agg := range byIssue {
+		byIssueResult = append(byIssueResult, map[string]any{
+			"issue_id": id,
+			"subject":  agg.Subject,
+			"hours":    agg.Hours,
+		})
+	}
+	sort.Slice(byIssueResult, func(i, j int) bool {
+		return byIssueResult[i]["hours"].(float64) > byIssueResult[j]["hours"].(float64)
+	})
+
+	// Build by_activity result
+	byActivityResult := make([]map[string]any, 0, len(byActivity))
+	for name, hours := range byActivity {
+		byActivityResult = append(byActivityResult, map[string]any{
+			"activity": name,
+			"hours":    hours,
+		})
+	}
+	sort.Slice(byActivityResult, func(i, j int) bool {
+		return byActivityResult[i]["hours"].(float64) > byActivityResult[j]["hours"].(float64)
+	})
+
+	return jsonResult(map[string]any{
+		"user":        userName,
+		"period":      fmt.Sprintf("%s ~ %s", fromDate, toDate),
+		"total_hours": totalHours,
+		"by_day":      byDayResult,
+		"by_issue":    byIssueResult,
+		"by_activity": byActivityResult,
+	})
+}
+
+func (h *ToolHandlers) handleReportsStandup(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	// Resolve user
+	userStr := req.GetString("user", "me")
+	var userID string
+	var userName string
+	var assignedToID string
+
+	if userStr == "me" {
+		user, err := h.client.GetCurrentUser()
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to get current user: %v", err)), nil
+		}
+		userID = "me"
+		assignedToID = "me"
+		userName = user.Firstname + " " + user.Lastname
+	} else {
+		resolvedID, err := h.resolver.ResolveUser(userStr, 0)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve user: %v", err)), nil
+		}
+		userID = strconv.Itoa(resolvedID)
+		assignedToID = userID
+		userName = userStr
+	}
+
+	// Determine dates
+	today := time.Now()
+	if dateStr := req.GetString("date", ""); dateStr != "" {
+		parsed, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Invalid date format: %v", err)), nil
+		}
+		today = parsed
+	}
+
+	todayStr := today.Format("2006-01-02")
+
+	// Calculate yesterday (skip weekends)
+	yesterday := today.AddDate(0, 0, -1)
+	if yesterday.Weekday() == time.Sunday {
+		yesterday = yesterday.AddDate(0, 0, -2) // Friday
+	} else if yesterday.Weekday() == time.Saturday {
+		yesterday = yesterday.AddDate(0, 0, -1) // Friday
+	}
+	yesterdayStr := yesterday.Format("2006-01-02")
+
+	// Fetch yesterday's time entries
+	teParams := redmine.ListTimeEntriesParams{
+		UserID: userID,
+		From:   yesterdayStr,
+		To:     yesterdayStr,
+		Limit:  100,
+	}
+
+	entries, _, err := h.client.ListTimeEntries(teParams)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to fetch time entries: %v", err)), nil
+	}
+
+	var yesterdayTotal float64
+	yesterdayEntries := make([]map[string]any, len(entries))
+	for i, entry := range entries {
+		yesterdayTotal += entry.Hours
+		e := map[string]any{
+			"hours":    entry.Hours,
+			"activity": entry.Activity.Name,
+		}
+		if entry.Issue != nil {
+			e["issue_id"] = entry.Issue.ID
+			e["subject"] = entry.Issue.Name
+		}
+		yesterdayEntries[i] = e
+	}
+
+	// Fetch today's open issues assigned to user
+	searchParams := redmine.SearchIssuesParams{
+		AssignedToID: assignedToID,
+		StatusID:     "open",
+		Limit:        50,
+		Sort:         "priority:desc",
+	}
+
+	issues, _, err := h.client.SearchIssues(searchParams)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to fetch open issues: %v", err)), nil
+	}
+
+	openIssues := make([]map[string]any, len(issues))
+	for i, issue := range issues {
+		openIssues[i] = map[string]any{
+			"id":       issue.ID,
+			"subject":  issue.Subject,
+			"status":   issue.Status.Name,
+			"priority": issue.Priority.Name,
+		}
+	}
+
+	return jsonResult(map[string]any{
+		"user": userName,
+		"date": todayStr,
+		"yesterday": map[string]any{
+			"date":        yesterdayStr,
+			"total_hours": yesterdayTotal,
+			"entries":     yesterdayEntries,
+		},
+		"today": map[string]any{
+			"open_issues": openIssues,
+		},
 	})
 }
 
@@ -1873,6 +3284,23 @@ func formatIssueDetail(issue redmine.Issue) map[string]any {
 		result["allowed_statuses"] = statuses
 	}
 
+	// Attachments
+	if len(issue.Attachments) > 0 {
+		attachments := make([]map[string]any, len(issue.Attachments))
+		for i, a := range issue.Attachments {
+			attachments[i] = map[string]any{
+				"id":           a.ID,
+				"filename":     a.Filename,
+				"filesize":     a.Filesize,
+				"content_type": a.ContentType,
+				"description":  a.Description,
+				"created_on":   a.CreatedOn,
+				"author":       map[string]any{"id": a.Author.ID, "name": a.Author.Name},
+			}
+		}
+		result["attachments"] = attachments
+	}
+
 	return result
 }
 
@@ -1902,4 +3330,31 @@ func getArrayArg(req mcp.CallToolRequest, key string) []any {
 		}
 	}
 	return nil
+}
+
+func parseUploadTokens(tokens []any) ([]redmine.UploadToken, error) {
+	uploads := make([]redmine.UploadToken, 0, len(tokens))
+	for _, t := range tokens {
+		m, ok := t.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("upload_tokens items must be objects with 'token' and 'filename' fields")
+		}
+		token, _ := m["token"].(string)
+		filename, _ := m["filename"].(string)
+		if token == "" || filename == "" {
+			return nil, fmt.Errorf("upload_tokens items require 'token' and 'filename' fields")
+		}
+		u := redmine.UploadToken{
+			Token:    token,
+			Filename: filename,
+		}
+		if ct, ok := m["content_type"].(string); ok {
+			u.ContentType = ct
+		}
+		if desc, ok := m["description"].(string); ok {
+			u.Description = desc
+		}
+		uploads = append(uploads, u)
+	}
+	return uploads, nil
 }

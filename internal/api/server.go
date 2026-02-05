@@ -119,17 +119,45 @@ func (s *Server) setupRoutes() {
 		r.Get("/projects/{id}", s.handleGetProject)
 		r.Patch("/projects/{id}", s.handleUpdateProject)
 
-		// Issues
+		// Issues (note: export.csv and batch-update must come before {id} to avoid wildcard match)
+		r.Get("/issues/export.csv", s.handleExportIssuesCSV)
+		r.Post("/issues/batch-update", s.handleBatchUpdateIssues)
 		r.Get("/issues", s.handleSearchIssues)
 		r.Get("/issues/{id}", s.handleGetIssue)
 		r.Post("/issues", s.handleCreateIssue)
 		r.Patch("/issues/{id}", s.handleUpdateIssue)
 		r.Post("/issues/{id}/subtasks", s.handleCreateSubtask)
 		r.Post("/issues/{id}/watchers", s.handleAddWatcher)
+		r.Delete("/issues/{id}/watchers/{user_id}", s.handleRemoveWatcher)
 		r.Post("/issues/{id}/relations", s.handleAddRelation)
+		r.Post("/issues/{id}/copy", s.handleCopyIssue)
+
+		// Relations
+		r.Delete("/relations/{id}", s.handleDeleteRelation)
 
 		// Time entries
 		r.Post("/time_entries", s.handleCreateTimeEntry)
+		r.Patch("/time_entries/{id}", s.handleUpdateTimeEntry)
+		r.Delete("/time_entries/{id}", s.handleDeleteTimeEntry)
+
+		// Users
+		r.Get("/users", s.handleSearchUsers)
+
+		// Versions
+		r.Get("/projects/{id}/versions", s.handleListVersions)
+		r.Post("/projects/{id}/versions", s.handleCreateVersion)
+		r.Patch("/versions/{id}", s.handleUpdateVersion)
+
+		// Wiki
+		r.Get("/projects/{id}/wiki", s.handleListWikiPages)
+		r.Get("/projects/{id}/wiki/{title}", s.handleGetWikiPage)
+		r.Put("/projects/{id}/wiki/{title}", s.handleCreateOrUpdateWikiPage)
+
+		// Attachments
+		r.Post("/attachments/upload", s.handleUploadAttachment)
+		r.Get("/attachments/{id}/download", s.handleDownloadAttachment)
+		r.Get("/issues/{id}/attachments", s.handleListAttachments)
+		r.Post("/issues/{id}/attach", s.handleAttachToIssue)
 
 		// Custom Fields
 		r.Get("/custom_fields", s.handleListAllCustomFields)
@@ -138,6 +166,10 @@ func (s *Server) setupRoutes() {
 		r.Get("/trackers", s.handleListTrackers)
 		r.Get("/statuses", s.handleListStatuses)
 		r.Get("/activities", s.handleListActivities)
+
+		// Reports
+		r.Get("/reports/weekly", s.handleWeeklyReport)
+		r.Get("/reports/standup", s.handleStandupReport)
 	})
 }
 
@@ -509,6 +541,472 @@ paths:
       responses:
         '201':
           description: Time entry created
+  /attachments/upload:
+    post:
+      summary: Upload a file
+      tags: [Attachments]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: File to upload (max 5MB)
+      responses:
+        '200':
+          description: Upload token
+  /attachments/{id}/download:
+    get:
+      summary: Download an attachment
+      tags: [Attachments]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Attachment ID
+      responses:
+        '200':
+          description: File content
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+  /issues/{id}/attachments:
+    get:
+      summary: List issue attachments
+      tags: [Attachments]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Issue ID
+      responses:
+        '200':
+          description: List of attachments
+  /issues/{id}/attach:
+    post:
+      summary: Attach files to an issue
+      tags: [Attachments]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Issue ID
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: ["files[]"]
+              properties:
+                "files[]":
+                  type: array
+                  items:
+                    type: string
+                    format: binary
+                  description: Files to attach (max 5MB each)
+                notes:
+                  type: string
+                  description: Notes/comment to add
+      responses:
+        '200':
+          description: Files attached
+  /time_entries/{id}:
+    patch:
+      summary: Update a time entry
+      tags: [Time Entries]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Time Entry ID
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                hours:
+                  type: number
+                activity:
+                  type: string
+                  description: Activity name or ID
+                comments:
+                  type: string
+                spent_on:
+                  type: string
+                  format: date
+      responses:
+        '200':
+          description: Time entry updated
+    delete:
+      summary: Delete a time entry
+      tags: [Time Entries]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Time Entry ID
+      responses:
+        '200':
+          description: Time entry deleted
+  /issues/{id}/watchers/{user_id}:
+    delete:
+      summary: Remove a watcher
+      tags: [Issues]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Issue ID
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: User ID
+      responses:
+        '200':
+          description: Watcher removed
+  /relations/{id}:
+    delete:
+      summary: Delete a relation
+      tags: [Issues]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Relation ID
+      responses:
+        '200':
+          description: Relation deleted
+  /users:
+    get:
+      summary: Search users
+      tags: [Users]
+      parameters:
+        - name: name
+          in: query
+          schema:
+            type: string
+          description: Filter by user name
+        - name: project
+          in: query
+          schema:
+            type: string
+          description: Project name or ID for context
+        - name: status
+          in: query
+          schema:
+            type: integer
+          description: "User status: 1=active, 2=registered, 3=locked"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 25
+      responses:
+        '200':
+          description: List of users
+  /issues/batch-update:
+    post:
+      summary: Batch update issues
+      tags: [Issues]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [issue_ids]
+              properties:
+                issue_ids:
+                  type: array
+                  items:
+                    type: integer
+                  description: List of issue IDs to update
+                status:
+                  type: string
+                  description: Status name or ID
+                assigned_to:
+                  type: string
+                  description: Assignee name or ID
+                priority:
+                  type: string
+                  description: Priority name or ID
+                notes:
+                  type: string
+                  description: Comment to add
+      responses:
+        '200':
+          description: Batch update results with success and failed arrays
+  /issues/{id}/copy:
+    post:
+      summary: Copy an issue
+      tags: [Issues]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Source issue ID
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project:
+                  type: string
+                  description: Target project name or ID (defaults to source project)
+                subject:
+                  type: string
+                  description: New subject (defaults to source subject)
+      responses:
+        '201':
+          description: Copied issue
+  /projects/{id}/versions:
+    get:
+      summary: List project versions
+      tags: [Versions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+      responses:
+        '200':
+          description: List of versions
+    post:
+      summary: Create a version
+      tags: [Versions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                status:
+                  type: string
+                  enum: [open, locked, closed]
+                due_date:
+                  type: string
+                  format: date
+                sharing:
+                  type: string
+                  enum: [none, descendants, hierarchy, tree, system]
+      responses:
+        '201':
+          description: Created version
+  /versions/{id}:
+    patch:
+      summary: Update a version
+      tags: [Versions]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Version ID
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                status:
+                  type: string
+                  enum: [open, locked, closed]
+                due_date:
+                  type: string
+                  format: date
+                sharing:
+                  type: string
+                  enum: [none, descendants, hierarchy, tree, system]
+      responses:
+        '200':
+          description: Version updated
+  /projects/{id}/wiki:
+    get:
+      summary: List wiki pages
+      tags: [Wiki]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+      responses:
+        '200':
+          description: List of wiki pages
+  /projects/{id}/wiki/{title}:
+    get:
+      summary: Get wiki page
+      tags: [Wiki]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+        - name: title
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Wiki page title
+      responses:
+        '200':
+          description: Wiki page with content
+    put:
+      summary: Create or update wiki page
+      tags: [Wiki]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+          description: Project ID
+        - name: title
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Wiki page title
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [text]
+              properties:
+                text:
+                  type: string
+                  description: Wiki page content (Textile markup)
+                comments:
+                  type: string
+                  description: Edit comment / version note
+      responses:
+        '200':
+          description: Wiki page saved
+  /issues/export.csv:
+    get:
+      summary: Export issues as CSV
+      tags: [Issues]
+      parameters:
+        - name: project
+          in: query
+          schema:
+            type: string
+          description: Project name or ID
+        - name: tracker
+          in: query
+          schema:
+            type: string
+          description: Tracker name or ID
+        - name: status
+          in: query
+          schema:
+            type: string
+          description: "Status: open, closed, all, or specific name"
+        - name: assigned_to
+          in: query
+          schema:
+            type: string
+          description: "Assignee name or 'me'"
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+      responses:
+        '200':
+          description: CSV file
+          content:
+            text/csv:
+              schema:
+                type: string
+  /reports/weekly:
+    get:
+      summary: Weekly time report
+      tags: [Reports]
+      parameters:
+        - name: user
+          in: query
+          schema:
+            type: string
+            default: me
+          description: "User name or 'me'"
+        - name: week_of
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Date within the target week (YYYY-MM-DD)
+      responses:
+        '200':
+          description: Weekly report with daily totals and entries
+  /reports/standup:
+    get:
+      summary: Standup report
+      tags: [Reports]
+      parameters:
+        - name: user
+          in: query
+          schema:
+            type: string
+            default: me
+          description: "User name or 'me'"
+        - name: date
+          in: query
+          schema:
+            type: string
+            format: date
+          description: Report date (YYYY-MM-DD), defaults to today
+      responses:
+        '200':
+          description: Standup report with yesterday's work and today's open issues
   /trackers:
     get:
       summary: List trackers

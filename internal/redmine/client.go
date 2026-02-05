@@ -351,6 +351,25 @@ type UpdateProjectParams struct {
 	IssueCustomFieldIDs []int  // nil = don't change, [] = clear all
 }
 
+// Attachment represents a Redmine file attachment
+type Attachment struct {
+	ID          int    `json:"id"`
+	Filename    string `json:"filename"`
+	Filesize    int    `json:"filesize"`
+	ContentType string `json:"content_type"`
+	Description string `json:"description"`
+	CreatedOn   string `json:"created_on"`
+	Author      IDName `json:"author"`
+}
+
+// UploadToken represents an uploaded file token for attaching to issues
+type UploadToken struct {
+	Token       string `json:"token"`
+	Filename    string `json:"filename"`
+	ContentType string `json:"content_type,omitempty"`
+	Description string `json:"description,omitempty"`
+}
+
 // Issue represents a Redmine issue
 type Issue struct {
 	ID          int     `json:"id"`
@@ -376,6 +395,7 @@ type Issue struct {
 	Watchers        []IDName      `json:"watchers,omitempty"`
 	Relations       []Relation    `json:"relations,omitempty"`
 	AllowedStatuses []IDName      `json:"allowed_statuses,omitempty"`
+	Attachments     []Attachment  `json:"attachments,omitempty"`
 }
 
 // IDName represents a simple id/name pair
@@ -494,7 +514,7 @@ func (c *Client) SearchIssues(params SearchIssuesParams) ([]Issue, int, error) {
 
 // GetIssue returns an issue by ID with optional includes
 func (c *Client) GetIssue(issueID int) (*Issue, error) {
-	path := fmt.Sprintf("/issues/%d.json?include=journals,watchers,relations,allowed_statuses", issueID)
+	path := fmt.Sprintf("/issues/%d.json?include=journals,watchers,relations,allowed_statuses,attachments", issueID)
 	data, err := c.doRequest("GET", path, nil)
 	if err != nil {
 		return nil, err
@@ -524,6 +544,7 @@ type CreateIssueParams struct {
 	DueDate       string
 	IsPrivate     *bool
 	CustomFields  map[string]any
+	Uploads       []UploadToken
 }
 
 // CreateIssue creates a new issue
@@ -575,6 +596,24 @@ func (c *Client) CreateIssue(params CreateIssueParams) (*Issue, error) {
 		issueData["custom_fields"] = customFields
 	}
 
+	if len(params.Uploads) > 0 {
+		uploads := make([]map[string]any, len(params.Uploads))
+		for i, u := range params.Uploads {
+			upload := map[string]any{
+				"token":    u.Token,
+				"filename": u.Filename,
+			}
+			if u.ContentType != "" {
+				upload["content_type"] = u.ContentType
+			}
+			if u.Description != "" {
+				upload["description"] = u.Description
+			}
+			uploads[i] = upload
+		}
+		issueData["uploads"] = uploads
+	}
+
 	data, err := c.doRequest("POST", "/issues.json", reqBody)
 	if err != nil {
 		return nil, err
@@ -605,6 +644,7 @@ type UpdateIssueParams struct {
 	IsPrivate    *bool
 	Notes        string
 	CustomFields map[string]any
+	Uploads      []UploadToken
 }
 
 // UpdateIssue updates an existing issue
@@ -655,6 +695,24 @@ func (c *Client) UpdateIssue(params UpdateIssueParams) error {
 			})
 		}
 		issueData["custom_fields"] = customFields
+	}
+
+	if len(params.Uploads) > 0 {
+		uploads := make([]map[string]any, len(params.Uploads))
+		for i, u := range params.Uploads {
+			upload := map[string]any{
+				"token":    u.Token,
+				"filename": u.Filename,
+			}
+			if u.ContentType != "" {
+				upload["content_type"] = u.ContentType
+			}
+			if u.Description != "" {
+				upload["description"] = u.Description
+			}
+			uploads[i] = upload
+		}
+		issueData["uploads"] = uploads
 	}
 
 	reqBody := map[string]any{
@@ -957,6 +1015,426 @@ func (c *Client) GetProjectDetail(projectID int, includes []string) (*ProjectDet
 	}
 
 	return &resp.Project, nil
+}
+
+// doRequestRaw performs an HTTP request with a raw body (non-JSON)
+func (c *Client) doRequestRaw(method, path string, body io.Reader, contentType string) ([]byte, error) {
+	req, err := http.NewRequest(method, c.baseURL+path, body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("X-Redmine-API-Key", c.apiKey)
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	return respBody, nil
+}
+
+// UploadFile uploads a file to Redmine and returns an upload token
+func (c *Client) UploadFile(filename string, content io.Reader) (*UploadToken, error) {
+	data, err := c.doRequestRaw("POST", "/uploads.json", content, "application/octet-stream")
+	if err != nil {
+		return nil, fmt.Errorf("failed to upload file: %w", err)
+	}
+
+	var resp struct {
+		Upload struct {
+			Token string `json:"token"`
+		} `json:"upload"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse upload response: %w", err)
+	}
+
+	return &UploadToken{
+		Token:    resp.Upload.Token,
+		Filename: filename,
+	}, nil
+}
+
+// GetAttachment returns attachment metadata by ID
+func (c *Client) GetAttachment(id int) (*Attachment, error) {
+	path := fmt.Sprintf("/attachments/%d.json", id)
+	data, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Attachment Attachment `json:"attachment"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp.Attachment, nil
+}
+
+// DownloadAttachment downloads an attachment's content by ID.
+// Returns the file bytes, content type, and filename.
+func (c *Client) DownloadAttachment(id int) ([]byte, string, string, error) {
+	// First get the attachment metadata to find the download URL and filename
+	attachment, err := c.GetAttachment(id)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("failed to get attachment info: %w", err)
+	}
+
+	// Download via /attachments/download/{id}/{filename}
+	path := fmt.Sprintf("/attachments/download/%d/%s", id, attachment.Filename)
+	data, err := c.doRequestRaw("GET", path, nil, "")
+	if err != nil {
+		return nil, "", "", fmt.Errorf("failed to download attachment: %w", err)
+	}
+
+	return data, attachment.ContentType, attachment.Filename, nil
+}
+
+// UpdateTimeEntryParams are parameters for updating a time entry
+type UpdateTimeEntryParams struct {
+	TimeEntryID int
+	Hours       float64
+	ActivityID  int
+	Comments    string
+	SpentOn     string // Date in YYYY-MM-DD format
+}
+
+// UpdateTimeEntry updates an existing time entry
+func (c *Client) UpdateTimeEntry(params UpdateTimeEntryParams) error {
+	timeEntryData := make(map[string]any)
+
+	if params.Hours > 0 {
+		timeEntryData["hours"] = params.Hours
+	}
+	if params.ActivityID > 0 {
+		timeEntryData["activity_id"] = params.ActivityID
+	}
+	if params.Comments != "" {
+		timeEntryData["comments"] = params.Comments
+	}
+	if params.SpentOn != "" {
+		timeEntryData["spent_on"] = params.SpentOn
+	}
+
+	reqBody := map[string]any{
+		"time_entry": timeEntryData,
+	}
+
+	path := fmt.Sprintf("/time_entries/%d.json", params.TimeEntryID)
+	_, err := c.doRequest("PUT", path, reqBody)
+	return err
+}
+
+// DeleteTimeEntry deletes a time entry
+func (c *Client) DeleteTimeEntry(id int) error {
+	path := fmt.Sprintf("/time_entries/%d.json", id)
+	_, err := c.doRequest("DELETE", path, nil)
+	return err
+}
+
+// RemoveWatcher removes a watcher from an issue
+func (c *Client) RemoveWatcher(issueID, userID int) error {
+	path := fmt.Sprintf("/issues/%d/watchers/%d.json", issueID, userID)
+	_, err := c.doRequest("DELETE", path, nil)
+	return err
+}
+
+// DeleteRelation deletes an issue relation
+func (c *Client) DeleteRelation(relationID int) error {
+	path := fmt.Sprintf("/relations/%d.json", relationID)
+	_, err := c.doRequest("DELETE", path, nil)
+	return err
+}
+
+// SearchUsersParams are parameters for searching users
+type SearchUsersParams struct {
+	Name      string
+	ProjectID int
+	Status    int // 1=active, 2=registered, 3=locked
+	Limit     int
+	Offset    int
+}
+
+// SearchUsers searches for users (tries admin API first, falls back to memberships)
+func (c *Client) SearchUsers(params SearchUsersParams) ([]User, int, error) {
+	// Try admin API first: GET /users.json
+	query := url.Values{}
+	if params.Name != "" {
+		query.Set("name", params.Name)
+	}
+	if params.Status > 0 {
+		query.Set("status", strconv.Itoa(params.Status))
+	} else {
+		query.Set("status", "1") // default to active
+	}
+	if params.Limit > 0 {
+		query.Set("limit", strconv.Itoa(params.Limit))
+	} else {
+		query.Set("limit", "25")
+	}
+	if params.Offset > 0 {
+		query.Set("offset", strconv.Itoa(params.Offset))
+	}
+
+	path := "/users.json?" + query.Encode()
+	data, err := c.doRequest("GET", path, nil)
+	if err == nil {
+		var resp struct {
+			Users      []User `json:"users"`
+			TotalCount int    `json:"total_count"`
+		}
+		if parseErr := json.Unmarshal(data, &resp); parseErr == nil {
+			// Fill in Name if empty
+			for i := range resp.Users {
+				if resp.Users[i].Name == "" {
+					resp.Users[i].Name = resp.Users[i].Firstname + " " + resp.Users[i].Lastname
+				}
+			}
+			return resp.Users, resp.TotalCount, nil
+		}
+	}
+
+	// Fallback: use project memberships if admin API fails (403)
+	if params.ProjectID == 0 {
+		return nil, 0, fmt.Errorf("user search requires admin privileges or a project context (provide project parameter)")
+	}
+
+	memberships, mErr := c.GetProjectMemberships(params.ProjectID, 100)
+	if mErr != nil {
+		return nil, 0, fmt.Errorf("failed to search users (admin API unavailable, membership fallback failed): %w", mErr)
+	}
+
+	var users []User
+	nameFilter := strings.ToLower(params.Name)
+	for _, m := range memberships {
+		if m.User == nil {
+			continue
+		}
+		if nameFilter != "" && !strings.Contains(strings.ToLower(m.User.Name), nameFilter) {
+			continue
+		}
+		users = append(users, User{
+			ID:   m.User.ID,
+			Name: m.User.Name,
+		})
+	}
+
+	return users, len(users), nil
+}
+
+// Version represents a Redmine version/milestone
+type Version struct {
+	ID          int    `json:"id"`
+	Project     IDName `json:"project"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Status      string `json:"status"`
+	DueDate     string `json:"due_date"`
+	Sharing     string `json:"sharing"`
+	CreatedOn   string `json:"created_on"`
+	UpdatedOn   string `json:"updated_on"`
+}
+
+// ListVersions returns all versions for a project
+func (c *Client) ListVersions(projectID int) ([]Version, error) {
+	path := fmt.Sprintf("/projects/%d/versions.json", projectID)
+	data, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Versions []Version `json:"versions"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return resp.Versions, nil
+}
+
+// CreateVersionParams are parameters for creating a version
+type CreateVersionParams struct {
+	ProjectID   int
+	Name        string
+	Description string
+	Status      string // open (default), locked, closed
+	DueDate     string
+	Sharing     string // none (default), descendants, hierarchy, tree, system
+}
+
+// CreateVersion creates a new version in a project
+func (c *Client) CreateVersion(params CreateVersionParams) (*Version, error) {
+	versionData := map[string]any{
+		"name": params.Name,
+	}
+	if params.Description != "" {
+		versionData["description"] = params.Description
+	}
+	if params.Status != "" {
+		versionData["status"] = params.Status
+	}
+	if params.DueDate != "" {
+		versionData["due_date"] = params.DueDate
+	}
+	if params.Sharing != "" {
+		versionData["sharing"] = params.Sharing
+	}
+
+	reqBody := map[string]any{
+		"version": versionData,
+	}
+
+	path := fmt.Sprintf("/projects/%d/versions.json", params.ProjectID)
+	data, err := c.doRequest("POST", path, reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Version Version `json:"version"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp.Version, nil
+}
+
+// UpdateVersionParams are parameters for updating a version
+type UpdateVersionParams struct {
+	VersionID   int
+	Name        string
+	Description string
+	Status      string // open, locked, closed
+	DueDate     string
+	Sharing     string // none, descendants, hierarchy, tree, system
+}
+
+// UpdateVersion updates an existing version
+func (c *Client) UpdateVersion(params UpdateVersionParams) error {
+	versionData := make(map[string]any)
+
+	if params.Name != "" {
+		versionData["name"] = params.Name
+	}
+	if params.Description != "" {
+		versionData["description"] = params.Description
+	}
+	if params.Status != "" {
+		versionData["status"] = params.Status
+	}
+	if params.DueDate != "" {
+		versionData["due_date"] = params.DueDate
+	}
+	if params.Sharing != "" {
+		versionData["sharing"] = params.Sharing
+	}
+
+	reqBody := map[string]any{
+		"version": versionData,
+	}
+
+	path := fmt.Sprintf("/versions/%d.json", params.VersionID)
+	_, err := c.doRequest("PUT", path, reqBody)
+	return err
+}
+
+// WikiPage represents a wiki page in the index
+type WikiPage struct {
+	Title     string `json:"title"`
+	Version   int    `json:"version"`
+	CreatedOn string `json:"created_on"`
+	UpdatedOn string `json:"updated_on"`
+}
+
+// WikiPageDetail represents a wiki page with content
+type WikiPageDetail struct {
+	Title     string `json:"title"`
+	Text      string `json:"text"`
+	Version   int    `json:"version"`
+	Author    IDName `json:"author"`
+	Comments  string `json:"comments"`
+	CreatedOn string `json:"created_on"`
+	UpdatedOn string `json:"updated_on"`
+}
+
+// ListWikiPages returns all wiki pages for a project
+func (c *Client) ListWikiPages(projectID int) ([]WikiPage, error) {
+	path := fmt.Sprintf("/projects/%d/wiki/index.json", projectID)
+	data, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		WikiPages []WikiPage `json:"wiki_pages"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return resp.WikiPages, nil
+}
+
+// GetWikiPage returns a wiki page by title
+func (c *Client) GetWikiPage(projectID int, title string) (*WikiPageDetail, error) {
+	path := fmt.Sprintf("/projects/%d/wiki/%s.json", projectID, url.PathEscape(title))
+	data, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		WikiPage WikiPageDetail `json:"wiki_page"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp.WikiPage, nil
+}
+
+// WikiPageParams are parameters for creating or updating a wiki page
+type WikiPageParams struct {
+	ProjectID int
+	Title     string
+	Text      string
+	Comments  string // edit comment / version note
+}
+
+// CreateOrUpdateWikiPage creates or updates a wiki page
+func (c *Client) CreateOrUpdateWikiPage(params WikiPageParams) error {
+	wikiData := map[string]any{
+		"text": params.Text,
+	}
+	if params.Comments != "" {
+		wikiData["comments"] = params.Comments
+	}
+
+	reqBody := map[string]any{
+		"wiki_page": wikiData,
+	}
+
+	path := fmt.Sprintf("/projects/%d/wiki/%s.json", params.ProjectID, url.PathEscape(params.Title))
+	_, err := c.doRequest("PUT", path, reqBody)
+	return err
 }
 
 // UpdateProject updates a project's settings
