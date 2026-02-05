@@ -176,6 +176,9 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		mcp.WithString("notes",
 			mcp.Description("Notes/comment to add"),
 		),
+		mcp.WithNumber("done_ratio",
+			mcp.Description("Progress percentage (0-100)"),
+		),
 		mcp.WithObject("custom_fields",
 			mcp.Description("Custom fields to update as key-value pairs"),
 		),
@@ -609,6 +612,16 @@ func (h *ToolHandlers) handleIssuesUpdate(ctx context.Context, req mcp.CallToolR
 	}
 
 	params.Notes = req.GetString("notes", "")
+
+	// done_ratio: check if explicitly provided (0 is a valid value)
+	if args := req.GetArguments(); args != nil {
+		if v, ok := args["done_ratio"]; ok {
+			if f, ok := v.(float64); ok {
+				ratio := int(f)
+				params.DoneRatio = &ratio
+			}
+		}
+	}
 
 	if customFields := getMapArg(req, "custom_fields"); customFields != nil {
 		resolved, err := h.resolveCustomFields(customFields, issue.Project.ID, issue.Tracker.ID)

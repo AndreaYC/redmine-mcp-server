@@ -545,6 +545,7 @@ type UpdateIssueParams struct {
 	IssueID      int
 	StatusID     int
 	AssignedToID int
+	DoneRatio    *int // nil = don't change, 0-100 = set value
 	Notes        string
 	CustomFields map[string]any
 }
@@ -558,6 +559,9 @@ func (c *Client) UpdateIssue(params UpdateIssueParams) error {
 	}
 	if params.AssignedToID > 0 {
 		issueData["assigned_to_id"] = params.AssignedToID
+	}
+	if params.DoneRatio != nil {
+		issueData["done_ratio"] = *params.DoneRatio
 	}
 	if params.Notes != "" {
 		issueData["notes"] = params.Notes

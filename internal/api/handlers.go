@@ -402,6 +402,7 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 		Status       string         `json:"status"`
 		AssignedTo   string         `json:"assigned_to"`
 		Notes        string         `json:"notes"`
+		DoneRatio    *int           `json:"done_ratio"`
 		CustomFields map[string]any `json:"custom_fields"`
 	}
 
@@ -418,8 +419,9 @@ func (s *Server) handleUpdateIssue(w http.ResponseWriter, r *http.Request) {
 	}
 
 	params := redmine.UpdateIssueParams{
-		IssueID: id,
-		Notes:   req.Notes,
+		IssueID:   id,
+		Notes:     req.Notes,
+		DoneRatio: req.DoneRatio,
 	}
 
 	if req.Status != "" {
