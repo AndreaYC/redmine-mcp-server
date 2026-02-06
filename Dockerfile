@@ -9,8 +9,9 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o server ./cmd/server
+# Build the binary (TARGETARCH is set automatically by buildx for multi-arch)
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-w -s" -o server ./cmd/server
 
 # Final stage
 FROM alpine:3.19

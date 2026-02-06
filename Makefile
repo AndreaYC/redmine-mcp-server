@@ -1,4 +1,4 @@
-.PHONY: build run-mcp run-sse run-api test lint clean docker-build docker-run docker-push docker-release release
+.PHONY: build build-macos run-mcp run-sse run-api test lint clean docker-build docker-build-multiarch docker-run docker-push docker-release release
 
 # Variables
 BINARY_NAME=server
@@ -45,9 +45,13 @@ deps:
 	go mod download
 	go mod tidy
 
-# Docker
+# Docker (single platform, loads into local daemon)
 docker-build:
 	docker buildx build --platform linux/amd64 -t $(DOCKER_IMAGE):latest -t $(DOCKER_IMAGE):$(VERSION) --load .
+
+# Docker multi-arch (linux/amd64 + linux/arm64, push directly)
+docker-build-multiarch:
+	docker buildx build --platform linux/amd64,linux/arm64 -t $(DOCKER_IMAGE):latest -t $(DOCKER_IMAGE):$(VERSION) --push .
 
 docker-run:
 	docker run -p 8080:8080 -e REDMINE_URL=http://advrm.advantech.com:3002 $(DOCKER_IMAGE):latest
@@ -62,6 +66,12 @@ docker-push:
 # Docker release (lint, test, build, push)
 docker-release: lint test docker-build docker-push
 	@echo "Docker release complete: $(DOCKER_IMAGE):$(VERSION)"
+
+# Build native macOS binaries (amd64 + arm64)
+build-macos:
+	@mkdir -p bin
+	GOOS=darwin GOARCH=amd64 go build -ldflags="-w -s -X main.version=$(VERSION)" -o bin/$(BINARY_NAME)-darwin-amd64 ./cmd/server
+	GOOS=darwin GOARCH=arm64 go build -ldflags="-w -s -X main.version=$(VERSION)" -o bin/$(BINARY_NAME)-darwin-arm64 ./cmd/server
 
 # Multi-platform release
 release:
@@ -82,8 +92,10 @@ help:
 	@echo "  test        - Run tests"
 	@echo "  lint        - Run linter"
 	@echo "  clean       - Clean build artifacts"
-	@echo "  docker-build   - Build Docker image"
+	@echo "  build-macos    - Build native macOS binaries (amd64 + arm64)"
+	@echo "  docker-build   - Build Docker image (linux/amd64)"
+	@echo "  docker-build-multiarch - Build multi-arch Docker image (amd64 + arm64) and push"
 	@echo "  docker-run     - Run Docker container (API mode)"
 	@echo "  docker-push    - Push Docker image to Harbor"
 	@echo "  docker-release - Lint, test, build and push Docker image"
-	@echo "  release        - Build for multiple platforms"
+	@echo "  release        - Build for all platforms (linux, darwin, windows)"
