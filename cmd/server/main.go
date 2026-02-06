@@ -75,7 +75,25 @@ func main() {
 	genRulesCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file (default: stdout)")
 	genRulesCmd.Flags().BoolVar(&mergeMode, "merge", false, "Merge with existing file instead of overwriting")
 
-	rootCmd.AddCommand(mcpCmd, apiCmd, genRulesCmd)
+	// generate-workflow command
+	var (
+		wfOutputFile string
+		wfMergeMode  bool
+		wfPerTracker int
+	)
+	genWorkflowCmd := &cobra.Command{
+		Use:   "generate-workflow",
+		Short: "Generate workflow transition rules by crawling Redmine issues",
+		Long:  "Crawl existing issues across all trackers and infer workflow transition rules from journal history (status change records)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runGenerateWorkflow(wfOutputFile, wfMergeMode, wfPerTracker)
+		},
+	}
+	genWorkflowCmd.Flags().StringVarP(&wfOutputFile, "output", "o", "", "Output file (default: stdout)")
+	genWorkflowCmd.Flags().BoolVar(&wfMergeMode, "merge", false, "Merge with existing file instead of overwriting")
+	genWorkflowCmd.Flags().IntVar(&wfPerTracker, "per-tracker", 50, "Max issues to inspect per tracker")
+
+	rootCmd.AddCommand(mcpCmd, apiCmd, genRulesCmd, genWorkflowCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -167,6 +185,56 @@ func runGenerateRules(outputFile string, mergeMode bool) error {
 			return fmt.Errorf("failed to write file: %w", err)
 		}
 		slog.Info("wrote rules", "file", outputFile, "fields", len(result.Fields))
+	} else {
+		fmt.Println(string(data))
+	}
+
+	return nil
+}
+
+func runGenerateWorkflow(outputFile string, mergeMode bool, perTracker int) error {
+	if redmineURL == "" {
+		return fmt.Errorf("REDMINE_URL is required (set via --redmine-url or REDMINE_URL env var)")
+	}
+	apiKey := os.Getenv("REDMINE_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("REDMINE_API_KEY is required")
+	}
+
+	client := redmine.NewClient(redmineURL, apiKey)
+	opts := redmine.GenerateWorkflowOptions{PerTracker: perTracker}
+	generated, err := redmine.GenerateWorkflowRules(client, opts, func(format string, args ...any) {
+		slog.Info(fmt.Sprintf(format, args...))
+	})
+	if err != nil {
+		return fmt.Errorf("failed to generate workflow rules: %w", err)
+	}
+
+	slog.Info("generated workflow rules", "trackers", len(generated.Trackers))
+
+	result := generated
+	if mergeMode && outputFile != "" {
+		existing, err := redmine.LoadWorkflowRules(outputFile)
+		if err != nil {
+			return fmt.Errorf("failed to load existing rules for merge: %w", err)
+		}
+		if existing != nil {
+			existing.Merge(generated)
+			result = existing
+			slog.Info("merged with existing file", "total_trackers", len(result.Trackers))
+		}
+	}
+
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal rules: %w", err)
+	}
+
+	if outputFile != "" {
+		if err := os.WriteFile(outputFile, append(data, '\n'), 0644); err != nil {
+			return fmt.Errorf("failed to write file: %w", err)
+		}
+		slog.Info("wrote workflow rules", "file", outputFile, "trackers", len(result.Trackers))
 	} else {
 		fmt.Println(string(data))
 	}

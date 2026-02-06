@@ -3,58 +3,1529 @@
     "1": {
       "name": "Requirement",
       "statuses": {
-        "33": { "name": "New", "is_closed": false },
-        "2":  { "name": "In Progress", "is_closed": false },
-        "7":  { "name": "Analyzing", "is_closed": false },
-        "9":  { "name": "Clarifying", "is_closed": false },
-        "11": { "name": "Confirmed", "is_closed": false },
-        "12": { "name": "Completed", "is_closed": true },
-        "40": { "name": "No Go", "is_closed": true },
-        "41": { "name": "Changed", "is_closed": false }
+        "11": {
+          "name": "Confirmed",
+          "is_closed": false
+        },
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "27": {
+          "name": "Waiting Verify",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "40": {
+          "name": "No Go",
+          "is_closed": true
+        },
+        "41": {
+          "name": "Changed",
+          "is_closed": false
+        },
+        "5": {
+          "name": "Closed",
+          "is_closed": true
+        },
+        "7": {
+          "name": "Analyzing",
+          "is_closed": false
+        },
+        "9": {
+          "name": "Clarifying",
+          "is_closed": false
+        }
       },
       "transitions": {
-        "33": [2, 7, 9, 11, 12, 40, 41],
-        "2":  [7, 9, 11, 12, 40, 41],
-        "7":  [2, 9, 11, 12, 40, 41],
-        "9":  [2, 7, 11, 12, 40, 41],
-        "11": [2, 7, 9, 12, 40, 41],
-        "12": [2, 7, 9, 11, 40, 41],
-        "40": [2, 7, 9, 11, 12, 41],
-        "41": [2, 7, 9, 11, 12, 40]
+        "11": [
+          2,
+          12,
+          41
+        ],
+        "12": [
+          2,
+          7
+        ],
+        "2": [
+          5,
+          7,
+          9,
+          11,
+          12,
+          33,
+          40,
+          41
+        ],
+        "27": [
+          12
+        ],
+        "33": [
+          2,
+          5,
+          7,
+          9,
+          11,
+          12,
+          27,
+          40,
+          41
+        ],
+        "40": [
+          2,
+          7,
+          12
+        ],
+        "41": [
+          2,
+          12,
+          40
+        ],
+        "5": [
+          2
+        ],
+        "7": [
+          2,
+          9,
+          12
+        ],
+        "9": [
+          2,
+          11,
+          12
+        ]
       }
     },
-    "4": {
-      "name": "Bug",
+    "10": {
+      "name": "Milestone Release",
       "statuses": {
-        "33": { "name": "New", "is_closed": false },
-        "9":  { "name": "Clarifying", "is_closed": false },
-        "20": { "name": "Fixing", "is_closed": false },
-        "44": { "name": "Pending", "is_closed": false },
-        "6":  { "name": "Rejected", "is_closed": true },
-        "38": { "name": "Won't-fix", "is_closed": true }
+        "16": {
+          "name": "Re-Check",
+          "is_closed": false
+        },
+        "5": {
+          "name": "Closed",
+          "is_closed": true
+        }
       },
       "transitions": {
-        "33": [9, 20, 44, 6, 38],
-        "9":  [20, 44, 6, 38],
-        "20": [9, 44, 6, 38],
-        "44": [9, 20, 38],
-        "6":  [9],
-        "38": [9, 6]
+        "16": [
+          5
+        ]
+      }
+    },
+    "12": {
+      "name": "Alpha",
+      "statuses": {
+        "1": {
+          "name": "Waiting Process",
+          "is_closed": false
+        },
+        "11": {
+          "name": "Confirmed",
+          "is_closed": false
+        },
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "15": {
+          "name": "Re-Opened",
+          "is_closed": false
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "20": {
+          "name": "Fixing",
+          "is_closed": false
+        },
+        "3": {
+          "name": "Fixed",
+          "is_closed": true
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "34": {
+          "name": "Project Cancel",
+          "is_closed": true
+        },
+        "36": {
+          "name": "Wait for next SW revision",
+          "is_closed": false
+        },
+        "5": {
+          "name": "Closed",
+          "is_closed": true
+        },
+        "6": {
+          "name": "Rejected",
+          "is_closed": true
+        },
+        "9": {
+          "name": "Clarifying",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "1": [
+          9
+        ],
+        "11": [
+          3
+        ],
+        "15": [
+          9
+        ],
+        "2": [
+          5,
+          12
+        ],
+        "20": [
+          36
+        ],
+        "3": [
+          5
+        ],
+        "33": [
+          2,
+          3,
+          5,
+          9,
+          20,
+          34
+        ],
+        "36": [
+          3
+        ],
+        "5": [
+          15
+        ],
+        "6": [
+          5
+        ],
+        "9": [
+          6,
+          11
+        ]
+      }
+    },
+    "13": {
+      "name": "Feature",
+      "statuses": {
+        "11": {
+          "name": "Confirmed",
+          "is_closed": false
+        },
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "17": {
+          "name": "Implementing",
+          "is_closed": false
+        },
+        "18": {
+          "name": "Assigned",
+          "is_closed": false
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "22": {
+          "name": "Verifying",
+          "is_closed": false
+        },
+        "30": {
+          "name": "Code Review",
+          "is_closed": false
+        },
+        "31": {
+          "name": "Postponed",
+          "is_closed": true
+        },
+        "32": {
+          "name": "Testing",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "9": {
+          "name": "Clarifying",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "11": [
+          12
+        ],
+        "12": [
+          9
+        ],
+        "17": [
+          12
+        ],
+        "18": [
+          17
+        ],
+        "22": [
+          12
+        ],
+        "30": [
+          12
+        ],
+        "31": [
+          9
+        ],
+        "32": [
+          12
+        ],
+        "33": [
+          2,
+          9,
+          11,
+          12,
+          22,
+          30,
+          31,
+          32
+        ],
+        "9": [
+          12,
+          17
+        ]
+      }
+    },
+    "15": {
+      "name": "Improvement",
+      "statuses": {
+        "1": {
+          "name": "Waiting Process",
+          "is_closed": false
+        },
+        "11": {
+          "name": "Confirmed",
+          "is_closed": false
+        },
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "22": {
+          "name": "Verifying",
+          "is_closed": false
+        },
+        "27": {
+          "name": "Waiting Verify",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "40": {
+          "name": "No Go",
+          "is_closed": true
+        },
+        "6": {
+          "name": "Rejected",
+          "is_closed": true
+        },
+        "9": {
+          "name": "Clarifying",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "11": [
+          2,
+          12
+        ],
+        "2": [
+          1,
+          11,
+          12,
+          27
+        ],
+        "22": [
+          12
+        ],
+        "27": [
+          22
+        ],
+        "33": [
+          2,
+          6,
+          9,
+          12,
+          40
+        ],
+        "40": [
+          33
+        ],
+        "9": [
+          2,
+          6,
+          40
+        ]
+      }
+    },
+    "16": {
+      "name": "Review Note",
+      "statuses": {
+        "1": {
+          "name": "Waiting Process",
+          "is_closed": false
+        },
+        "11": {
+          "name": "Confirmed",
+          "is_closed": false
+        },
+        "18": {
+          "name": "Assigned",
+          "is_closed": false
+        },
+        "19": {
+          "name": "Drop",
+          "is_closed": true
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "5": {
+          "name": "Closed",
+          "is_closed": true
+        }
+      },
+      "transitions": {
+        "1": [
+          11,
+          18,
+          33
+        ],
+        "11": [
+          2
+        ],
+        "18": [
+          1,
+          5
+        ],
+        "2": [
+          5,
+          33
+        ],
+        "33": [
+          2,
+          5,
+          19
+        ]
+      }
+    },
+    "18": {
+      "name": "iDesign",
+      "statuses": {
+        "15": {
+          "name": "Re-Opened",
+          "is_closed": false
+        },
+        "20": {
+          "name": "Fixing",
+          "is_closed": false
+        },
+        "21": {
+          "name": "Fix Reject",
+          "is_closed": false
+        },
+        "3": {
+          "name": "Fixed",
+          "is_closed": true
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "34": {
+          "name": "Project Cancel",
+          "is_closed": true
+        },
+        "35": {
+          "name": "Wait for next HW revision",
+          "is_closed": false
+        },
+        "36": {
+          "name": "Wait for next SW revision",
+          "is_closed": false
+        },
+        "37": {
+          "name": "Ready for DQA test",
+          "is_closed": false
+        },
+        "38": {
+          "name": "Won't-fix",
+          "is_closed": true
+        },
+        "6": {
+          "name": "Rejected",
+          "is_closed": true
+        },
+        "9": {
+          "name": "Clarifying",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "15": [
+          37
+        ],
+        "20": [
+          33,
+          36,
+          37
+        ],
+        "21": [
+          34
+        ],
+        "3": [
+          15
+        ],
+        "33": [
+          9,
+          20,
+          36,
+          37
+        ],
+        "35": [
+          3
+        ],
+        "36": [
+          21,
+          33,
+          35
+        ],
+        "37": [
+          3,
+          6,
+          21,
+          33,
+          35,
+          38
+        ],
+        "9": [
+          20,
+          36
+        ]
+      }
+    },
+    "2": {
+      "name": "Function",
+      "statuses": {
+        "1": {
+          "name": "Waiting Process",
+          "is_closed": false
+        },
+        "11": {
+          "name": "Confirmed",
+          "is_closed": false
+        },
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "15": {
+          "name": "Re-Opened",
+          "is_closed": false
+        },
+        "17": {
+          "name": "Implementing",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "5": {
+          "name": "Closed",
+          "is_closed": true
+        },
+        "7": {
+          "name": "Analyzing",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "1": [
+          7,
+          11,
+          12
+        ],
+        "11": [
+          17
+        ],
+        "12": [
+          5,
+          15
+        ],
+        "15": [
+          5,
+          12
+        ],
+        "17": [
+          12
+        ],
+        "33": [
+          5
+        ],
+        "7": [
+          17
+        ]
+      }
+    },
+    "20": {
+      "name": "Request",
+      "statuses": {
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "20": {
+          "name": "Fixing",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "42": {
+          "name": "Approved",
+          "is_closed": false
+        },
+        "47": {
+          "name": "Support \u0026 HW Rework",
+          "is_closed": false
+        },
+        "6": {
+          "name": "Rejected",
+          "is_closed": true
+        },
+        "9": {
+          "name": "Clarifying",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "2": [
+          12
+        ],
+        "20": [
+          47
+        ],
+        "33": [
+          9,
+          20
+        ],
+        "42": [
+          2
+        ],
+        "9": [
+          6,
+          42
+        ]
+      }
+    },
+    "22": {
+      "name": "EE_Task",
+      "statuses": {
+        "19": {
+          "name": "Drop",
+          "is_closed": true
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "33": [
+          2,
+          19
+        ]
+      }
+    },
+    "23": {
+      "name": "BIOS_Task",
+      "statuses": {
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "43": {
+          "name": "Task_Finished",
+          "is_closed": false
+        },
+        "44": {
+          "name": "Pending",
+          "is_closed": false
+        },
+        "5": {
+          "name": "Closed",
+          "is_closed": true
+        }
+      },
+      "transitions": {
+        "2": [
+          5,
+          43,
+          44
+        ],
+        "33": [
+          2,
+          43,
+          44
+        ],
+        "43": [
+          5
+        ],
+        "44": [
+          2,
+          43
+        ]
+      }
+    },
+    "26": {
+      "name": "Maintain_ME",
+      "statuses": {
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "43": {
+          "name": "Task_Finished",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "33": [
+          43
+        ],
+        "43": [
+          12
+        ]
+      }
+    },
+    "28": {
+      "name": "EE2_Task",
+      "statuses": {
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "15": {
+          "name": "Re-Opened",
+          "is_closed": false
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "43": {
+          "name": "Task_Finished",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "12": [
+          15
+        ],
+        "15": [
+          2
+        ],
+        "2": [
+          12,
+          43
+        ],
+        "33": [
+          2,
+          12
+        ],
+        "43": [
+          12
+        ]
+      }
+    },
+    "29": {
+      "name": "Bring up",
+      "statuses": {
+        "15": {
+          "name": "Re-Opened",
+          "is_closed": false
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "20": {
+          "name": "Fixing",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "35": {
+          "name": "Wait for next HW revision",
+          "is_closed": false
+        },
+        "36": {
+          "name": "Wait for next SW revision",
+          "is_closed": false
+        },
+        "37": {
+          "name": "Ready for DQA test",
+          "is_closed": false
+        },
+        "47": {
+          "name": "Support \u0026 HW Rework",
+          "is_closed": false
+        },
+        "5": {
+          "name": "Closed",
+          "is_closed": true
+        },
+        "6": {
+          "name": "Rejected",
+          "is_closed": true
+        },
+        "9": {
+          "name": "Clarifying",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "15": [
+          9,
+          20
+        ],
+        "2": [
+          9
+        ],
+        "20": [
+          5,
+          9,
+          35,
+          36,
+          37
+        ],
+        "33": [
+          2,
+          5,
+          6,
+          9,
+          20,
+          35,
+          36
+        ],
+        "35": [
+          5,
+          20,
+          37
+        ],
+        "36": [
+          5,
+          9,
+          20
+        ],
+        "37": [
+          5
+        ],
+        "47": [
+          20
+        ],
+        "5": [
+          15,
+          33
+        ],
+        "6": [
+          15
+        ],
+        "9": [
+          5,
+          20,
+          35,
+          36,
+          47
+        ]
+      }
+    },
+    "30": {
+      "name": "PMT_Task",
+      "statuses": {
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "5": {
+          "name": "Closed",
+          "is_closed": true
+        }
+      },
+      "transitions": {
+        "33": [
+          5
+        ]
       }
     },
     "32": {
       "name": "SW_Task",
       "statuses": {
-        "33": { "name": "New", "is_closed": false },
-        "2":  { "name": "In Progress", "is_closed": false },
-        "44": { "name": "Pending", "is_closed": false },
-        "5":  { "name": "Closed", "is_closed": true }
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "44": {
+          "name": "Pending",
+          "is_closed": false
+        },
+        "5": {
+          "name": "Closed",
+          "is_closed": true
+        },
+        "9": {
+          "name": "Clarifying",
+          "is_closed": false
+        }
       },
       "transitions": {
-        "33": [2, 44, 5],
-        "2":  [44, 5],
-        "44": [2, 5],
-        "5":  []
+        "2": [
+          5,
+          9,
+          44
+        ],
+        "33": [
+          2,
+          5,
+          44
+        ],
+        "44": [
+          2,
+          5
+        ],
+        "5": [
+          2
+        ]
+      }
+    },
+    "33": {
+      "name": "Feasibility Study",
+      "statuses": {
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "22": {
+          "name": "Verifying",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "6": {
+          "name": "Rejected",
+          "is_closed": true
+        },
+        "9": {
+          "name": "Clarifying",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "22": [
+          12
+        ],
+        "33": [
+          9
+        ],
+        "9": [
+          6,
+          22
+        ]
+      }
+    },
+    "37": {
+      "name": "Common Issue",
+      "statuses": {
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "15": {
+          "name": "Re-Opened",
+          "is_closed": false
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "20": {
+          "name": "Fixing",
+          "is_closed": false
+        },
+        "22": {
+          "name": "Verifying",
+          "is_closed": false
+        },
+        "27": {
+          "name": "Waiting Verify",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "44": {
+          "name": "Pending",
+          "is_closed": false
+        },
+        "9": {
+          "name": "Clarifying",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "12": [
+          15
+        ],
+        "15": [
+          27
+        ],
+        "2": [
+          12,
+          27
+        ],
+        "20": [
+          33
+        ],
+        "22": [
+          12
+        ],
+        "27": [
+          9,
+          22
+        ],
+        "33": [
+          2,
+          9,
+          12,
+          27
+        ],
+        "44": [
+          33
+        ],
+        "9": [
+          12,
+          27
+        ]
+      }
+    },
+    "39": {
+      "name": "EE3_Task",
+      "statuses": {
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "43": {
+          "name": "Task_Finished",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "2": [
+          12,
+          43
+        ],
+        "33": [
+          2,
+          12,
+          43
+        ],
+        "43": [
+          12
+        ]
+      }
+    },
+    "4": {
+      "name": "Bug",
+      "statuses": {
+        "20": {
+          "name": "Fixing",
+          "is_closed": false
+        },
+        "22": {
+          "name": "Verifying",
+          "is_closed": false
+        },
+        "3": {
+          "name": "Fixed",
+          "is_closed": true
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "35": {
+          "name": "Wait for next HW revision",
+          "is_closed": false
+        },
+        "36": {
+          "name": "Wait for next SW revision",
+          "is_closed": false
+        },
+        "37": {
+          "name": "Ready for DQA test",
+          "is_closed": false
+        },
+        "38": {
+          "name": "Won't-fix",
+          "is_closed": true
+        },
+        "44": {
+          "name": "Pending",
+          "is_closed": false
+        },
+        "47": {
+          "name": "Support \u0026 HW Rework",
+          "is_closed": false
+        },
+        "6": {
+          "name": "Rejected",
+          "is_closed": true
+        },
+        "9": {
+          "name": "Clarifying",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "20": [
+          6,
+          9,
+          35,
+          36,
+          37,
+          38,
+          44
+        ],
+        "22": [
+          3,
+          9
+        ],
+        "33": [
+          6,
+          9,
+          20,
+          38,
+          44
+        ],
+        "35": [
+          20
+        ],
+        "36": [
+          37
+        ],
+        "37": [
+          22,
+          36
+        ],
+        "38": [
+          6,
+          9
+        ],
+        "44": [
+          9,
+          20,
+          38
+        ],
+        "47": [
+          37
+        ],
+        "6": [
+          9
+        ],
+        "9": [
+          6,
+          20,
+          37,
+          38,
+          44,
+          47
+        ]
+      }
+    },
+    "41": {
+      "name": "Component ECPO/ECNR",
+      "statuses": {
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "34": {
+          "name": "Project Cancel",
+          "is_closed": true
+        },
+        "5": {
+          "name": "Closed",
+          "is_closed": true
+        }
+      },
+      "transitions": {
+        "33": [
+          5,
+          34
+        ]
+      }
+    },
+    "42": {
+      "name": "iProject Tasks",
+      "statuses": {
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "44": {
+          "name": "Pending",
+          "is_closed": false
+        },
+        "49": {
+          "name": "Cancel",
+          "is_closed": true
+        },
+        "50": {
+          "name": "Processing",
+          "is_closed": false
+        },
+        "51": {
+          "name": "Done",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "33": [
+          12,
+          44,
+          49,
+          50,
+          51
+        ],
+        "44": [
+          33
+        ],
+        "50": [
+          12,
+          51
+        ],
+        "51": [
+          12,
+          49
+        ]
+      }
+    },
+    "45": {
+      "name": "CE_Task",
+      "statuses": {
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "15": {
+          "name": "Re-Opened",
+          "is_closed": false
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "43": {
+          "name": "Task_Finished",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "12": [
+          15
+        ],
+        "15": [
+          2,
+          43
+        ],
+        "2": [
+          12,
+          43
+        ],
+        "33": [
+          2,
+          12,
+          43
+        ],
+        "43": [
+          12,
+          15
+        ]
+      }
+    },
+    "46": {
+      "name": "SE_Task",
+      "statuses": {
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "43": {
+          "name": "Task_Finished",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "2": [
+          12,
+          43
+        ],
+        "33": [
+          2,
+          12,
+          43
+        ],
+        "43": [
+          12
+        ]
+      }
+    },
+    "47": {
+      "name": "PPM Tasks",
+      "statuses": {
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "33": [
+          12
+        ]
+      }
+    },
+    "49": {
+      "name": "SQF/SQR EOL(LTB)",
+      "statuses": {
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "5": {
+          "name": "Closed",
+          "is_closed": true
+        }
+      },
+      "transitions": {
+        "33": [
+          5
+        ]
+      }
+    },
+    "5": {
+      "name": "AE",
+      "statuses": {
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "33": [
+          2,
+          12
+        ]
+      }
+    },
+    "51": {
+      "name": "Test Case",
+      "statuses": {
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "32": {
+          "name": "Testing",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "32": [
+          12
+        ],
+        "33": [
+          12,
+          32
+        ]
+      }
+    },
+    "7": {
+      "name": "Task",
+      "statuses": {
+        "12": {
+          "name": "Completed",
+          "is_closed": true
+        },
+        "15": {
+          "name": "Re-Opened",
+          "is_closed": false
+        },
+        "2": {
+          "name": "In Progress",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "12": [
+          15
+        ],
+        "2": [
+          12
+        ],
+        "33": [
+          2,
+          12
+        ]
+      }
+    },
+    "8": {
+      "name": "ReleaseNote",
+      "statuses": {
+        "1": {
+          "name": "Waiting Process",
+          "is_closed": false
+        },
+        "33": {
+          "name": "New",
+          "is_closed": false
+        },
+        "37": {
+          "name": "Ready for DQA test",
+          "is_closed": false
+        },
+        "38": {
+          "name": "Won't-fix",
+          "is_closed": true
+        },
+        "9": {
+          "name": "Clarifying",
+          "is_closed": false
+        }
+      },
+      "transitions": {
+        "1": [
+          38
+        ],
+        "33": [
+          9
+        ],
+        "37": [
+          38
+        ],
+        "9": [
+          37,
+          38
+        ]
       }
     }
   }

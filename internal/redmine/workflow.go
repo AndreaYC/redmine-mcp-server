@@ -3,7 +3,9 @@ package redmine
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -143,4 +145,197 @@ func statusName(tracker WorkflowTracker, statusID int) string {
 		return s.Name
 	}
 	return fmt.Sprintf("Unknown(%d)", statusID)
+}
+
+// TrackerTransitionData holds collected transition data for a single tracker.
+type TrackerTransitionData struct {
+	Name        string
+	Transitions map[int][]IDName // fromStatusID → allowed target statuses
+}
+
+// GenerateWorkflowOptions configures the workflow generation process.
+type GenerateWorkflowOptions struct {
+	PerTracker int // max issues to inspect per tracker (default 50)
+}
+
+// extractTransitions scans journals for status_id changes and returns
+// [from, to] pairs as integer IDs.
+func extractTransitions(journals []Journal) [][2]int {
+	var pairs [][2]int
+	for _, j := range journals {
+		for _, d := range j.Details {
+			if d.Property != "attr" || d.Name != "status_id" {
+				continue
+			}
+			oldID, err1 := strconv.Atoi(d.OldValue)
+			newID, err2 := strconv.Atoi(d.NewValue)
+			if err1 != nil || err2 != nil {
+				continue
+			}
+			pairs = append(pairs, [2]int{oldID, newID})
+		}
+	}
+	return pairs
+}
+
+// BuildWorkflowRules converts collected data into WorkflowRules.
+// statuses: global status list (for IsClosed lookup)
+// trackerTransitions: map[trackerID] → TrackerTransitionData
+func BuildWorkflowRules(statuses []IssueStatus, trackerTransitions map[int]TrackerTransitionData) *WorkflowRules {
+	// Build status lookup for IsClosed
+	statusLookup := make(map[int]IssueStatus, len(statuses))
+	for _, s := range statuses {
+		statusLookup[s.ID] = s
+	}
+
+	rules := &WorkflowRules{Trackers: make(map[string]WorkflowTracker)}
+
+	for trackerID, data := range trackerTransitions {
+		if len(data.Transitions) == 0 {
+			continue
+		}
+
+		// Collect all referenced status IDs
+		referenced := make(map[int]struct{})
+		for fromID, targets := range data.Transitions {
+			referenced[fromID] = struct{}{}
+			for _, t := range targets {
+				referenced[t.ID] = struct{}{}
+			}
+		}
+
+		// Build statuses map with only referenced statuses
+		wfStatuses := make(map[string]WorkflowStatus, len(referenced))
+		for sid := range referenced {
+			gs, ok := statusLookup[sid]
+			if !ok {
+				continue
+			}
+			wfStatuses[strconv.Itoa(sid)] = WorkflowStatus{
+				Name:     gs.Name,
+				IsClosed: gs.IsClosed,
+			}
+		}
+
+		// Build transitions map (deduplicate targets)
+		transitions := make(map[string][]int, len(data.Transitions))
+		for fromID, targets := range data.Transitions {
+			seen := make(map[int]struct{})
+			var ids []int
+			for _, t := range targets {
+				if _, exists := seen[t.ID]; !exists {
+					seen[t.ID] = struct{}{}
+					ids = append(ids, t.ID)
+				}
+			}
+			sort.Ints(ids)
+			transitions[strconv.Itoa(fromID)] = ids
+		}
+
+		rules.Trackers[strconv.Itoa(trackerID)] = WorkflowTracker{
+			Name:        data.Name,
+			Statuses:    wfStatuses,
+			Transitions: transitions,
+		}
+	}
+
+	return rules
+}
+
+// GenerateWorkflowRules crawls existing issues to infer workflow transition rules
+// from journal history (status_id changes). This works on all Redmine versions,
+// including those that don't support the allowed_statuses field.
+func GenerateWorkflowRules(client *Client, opts GenerateWorkflowOptions, logf func(string, ...any)) (*WorkflowRules, error) {
+	if opts.PerTracker <= 0 {
+		opts.PerTracker = 50
+	}
+
+	trackers, err := client.ListTrackers()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list trackers: %w", err)
+	}
+
+	statuses, err := client.ListIssueStatuses()
+	if err != nil {
+		return nil, fmt.Errorf("failed to list issue statuses: %w", err)
+	}
+
+	// Build status name lookup
+	statusLookup := make(map[int]string, len(statuses))
+	for _, s := range statuses {
+		statusLookup[s.ID] = s.Name
+	}
+
+	trackerTransitions := make(map[int]TrackerTransitionData)
+
+	for i, tracker := range trackers {
+		logf("tracker %d/%d: %s", i+1, len(trackers), tracker.Name)
+
+		// Fetch issues for this tracker, paginated, sorted by most recently updated
+		var allIssues []Issue
+		remaining := opts.PerTracker
+		offset := 0
+		for remaining > 0 {
+			limit := min(remaining, 100)
+			issues, _, err := client.SearchIssues(SearchIssuesParams{
+				TrackerID: tracker.ID,
+				StatusID:  "*",
+				Sort:      "updated_on:desc",
+				Limit:     limit,
+				Offset:    offset,
+			})
+			if err != nil {
+				logf("  warning: failed to search issues for tracker %s: %v", tracker.Name, err)
+				break
+			}
+			allIssues = append(allIssues, issues...)
+			if len(issues) < limit {
+				break // no more pages
+			}
+			remaining -= len(issues)
+			offset += len(issues)
+		}
+
+		if len(allIssues) == 0 {
+			logf("  no issues found, skipping")
+			continue
+		}
+
+		data := TrackerTransitionData{
+			Name:        tracker.Name,
+			Transitions: make(map[int][]IDName),
+		}
+
+		transitionCount := 0
+		for _, brief := range allIssues {
+			issue, err := client.GetIssue(brief.ID)
+			if err != nil {
+				logf("  warning: failed to get issue #%d: %v", brief.ID, err)
+				continue
+			}
+			for _, pair := range extractTransitions(issue.Journals) {
+				fromID, toID := pair[0], pair[1]
+				toName := statusLookup[toID]
+				if toName == "" {
+					toName = fmt.Sprintf("Unknown(%d)", toID)
+				}
+				data.Transitions[fromID] = append(data.Transitions[fromID], IDName{ID: toID, Name: toName})
+				transitionCount++
+			}
+		}
+
+		logf("  %d issues inspected, %d transitions found", len(allIssues), transitionCount)
+		trackerTransitions[tracker.ID] = data
+	}
+
+	return BuildWorkflowRules(statuses, trackerTransitions), nil
+}
+
+// Merge updates r with trackers from other. Trackers present in other overwrite
+// those in r; trackers only in r are preserved.
+func (r *WorkflowRules) Merge(other *WorkflowRules) {
+	if other == nil {
+		return
+	}
+	maps.Copy(r.Trackers, other.Trackers)
 }
