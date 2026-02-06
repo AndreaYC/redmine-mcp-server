@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -1296,22 +1297,42 @@ func formatIssueDetailAPI(issue redmine.Issue) map[string]any {
 
 func resolveCustomFieldsAPI(fields map[string]any, rules *redmine.CustomFieldRules) (map[string]any, error) {
 	result := make(map[string]any)
-	for name, value := range fields {
-		if id, err := strconv.Atoi(name); err == nil {
-			// Validate value if rules exist
-			if rules != nil {
-				if s, ok := value.(string); ok {
-					corrected, verr := rules.ValidateValue(id, s)
-					if verr != nil {
-						return nil, verr
-					}
-					value = corrected
-				}
+
+	// Build name-to-ID mapping from rules
+	nameToID := make(map[string]int)
+	if rules != nil {
+		for idStr, field := range rules.Fields {
+			if id, err := strconv.Atoi(idStr); err == nil {
+				nameToID[strings.ToLower(field.Name)] = id
 			}
-			result[strconv.Itoa(id)] = value
-		} else {
-			result[name] = value
 		}
+	}
+
+	for name, value := range fields {
+		var fieldID int
+
+		if id, err := strconv.Atoi(name); err == nil {
+			// Already a numeric ID
+			fieldID = id
+		} else if id, ok := nameToID[strings.ToLower(name)]; ok {
+			// Resolve name to ID using rules
+			fieldID = id
+		} else {
+			// Unknown field name, skip it (Redmine will reject invalid names anyway)
+			continue
+		}
+
+		// Validate value if rules exist
+		if rules != nil {
+			if s, ok := value.(string); ok {
+				corrected, verr := rules.ValidateValue(fieldID, s)
+				if verr != nil {
+					return nil, verr
+				}
+				value = corrected
+			}
+		}
+		result[strconv.Itoa(fieldID)] = value
 	}
 	return result, nil
 }

@@ -3153,6 +3153,15 @@ func (h *ToolHandlers) resolveCustomFields(fields map[string]any, projectID int,
 		}
 	}
 
+	// Fallback: use custom field rules for name-to-ID mapping
+	if h.rules != nil {
+		for idStr, field := range h.rules.Fields {
+			if id, err := strconv.Atoi(idStr); err == nil {
+				nameToID[strings.ToLower(field.Name)] = id
+			}
+		}
+	}
+
 	for key, value := range fields {
 		var fieldID int
 
@@ -3370,8 +3379,16 @@ func jsonResult(data any) (*mcp.CallToolResult, error) {
 func getMapArg(req mcp.CallToolRequest, key string) map[string]any {
 	args := req.GetArguments()
 	if v, ok := args[key]; ok {
+		// Try direct map type
 		if m, ok := v.(map[string]any); ok {
 			return m
+		}
+		// Try parsing from JSON string (MCP sometimes stringifies objects)
+		if s, ok := v.(string); ok && strings.HasPrefix(s, "{") {
+			var m map[string]any
+			if err := json.Unmarshal([]byte(s), &m); err == nil {
+				return m
+			}
 		}
 	}
 	return nil
@@ -3380,8 +3397,16 @@ func getMapArg(req mcp.CallToolRequest, key string) map[string]any {
 func getArrayArg(req mcp.CallToolRequest, key string) []any {
 	args := req.GetArguments()
 	if v, ok := args[key]; ok {
+		// Try direct array type
 		if arr, ok := v.([]any); ok {
 			return arr
+		}
+		// Try parsing from JSON string (MCP sometimes stringifies arrays)
+		if s, ok := v.(string); ok && strings.HasPrefix(s, "[") {
+			var arr []any
+			if err := json.Unmarshal([]byte(s), &arr); err == nil {
+				return arr
+			}
 		}
 	}
 	return nil
