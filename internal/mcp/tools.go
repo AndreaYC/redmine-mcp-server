@@ -78,14 +78,14 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 	), h.handleMe)
 
 	// Projects
-	s.AddTool(mcp.NewTool("projects.list",
+	s.AddTool(mcp.NewTool("projects_list",
 		mcp.WithDescription("List all projects"),
 		mcp.WithNumber("limit",
 			mcp.Description("Number of projects to return (default: 100)"),
 		),
 	), h.handleProjectsList)
 
-	s.AddTool(mcp.NewTool("projects.create",
+	s.AddTool(mcp.NewTool("projects_create",
 		mcp.WithDescription("Create a new project"),
 		mcp.WithString("name",
 			mcp.Required(),
@@ -104,7 +104,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 	), h.handleProjectsCreate)
 
 	// Issues
-	s.AddTool(mcp.NewTool("issues.search",
+	s.AddTool(mcp.NewTool("issues_search",
 		mcp.WithDescription("Search issues"),
 		mcp.WithString("project",
 			mcp.Description("Project name or ID"),
@@ -150,7 +150,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleIssuesSearch)
 
-	s.AddTool(mcp.NewTool("issues.getById",
+	s.AddTool(mcp.NewTool("issues_getById",
 		mcp.WithDescription("Get issue details including journals, watchers, and relations"),
 		mcp.WithNumber("issue_id",
 			mcp.Required(),
@@ -158,7 +158,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleIssuesGetById)
 
-	s.AddTool(mcp.NewTool("issues.create",
+	s.AddTool(mcp.NewTool("issues_create",
 		mcp.WithDescription("Create a new issue"),
 		mcp.WithString("project",
 			mcp.Required(),
@@ -194,12 +194,12 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Description("Whether the issue is private"),
 		),
 		mcp.WithArray("upload_tokens",
-			mcp.Description("Upload tokens from attachments.upload to attach files (array of {token, filename, content_type, description})"),
+			mcp.Description("Upload tokens from attachments_upload to attach files (array of {token, filename, content_type, description})"),
 			mcp.Items(map[string]any{"type": "object"}),
 		),
 	), h.handleIssuesCreate)
 
-	s.AddTool(mcp.NewTool("issues.update",
+	s.AddTool(mcp.NewTool("issues_update",
 		mcp.WithDescription("Update an issue"),
 		mcp.WithNumber("issue_id",
 			mcp.Required(),
@@ -242,12 +242,12 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Description("Whether the issue is private"),
 		),
 		mcp.WithArray("upload_tokens",
-			mcp.Description("Upload tokens from attachments.upload to attach files (array of {token, filename, content_type, description})"),
+			mcp.Description("Upload tokens from attachments_upload to attach files (array of {token, filename, content_type, description})"),
 			mcp.Items(map[string]any{"type": "object"}),
 		),
 	), h.handleIssuesUpdate)
 
-	s.AddTool(mcp.NewTool("issues.createSubtask",
+	s.AddTool(mcp.NewTool("issues_createSubtask",
 		mcp.WithDescription("Create a subtask under an existing issue"),
 		mcp.WithNumber("parent_issue_id",
 			mcp.Required(),
@@ -283,7 +283,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleIssuesCreateSubtask)
 
-	s.AddTool(mcp.NewTool("issues.addWatcher",
+	s.AddTool(mcp.NewTool("issues_addWatcher",
 		mcp.WithDescription("Add a watcher to an issue"),
 		mcp.WithNumber("issue_id",
 			mcp.Required(),
@@ -295,7 +295,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleIssuesAddWatcher)
 
-	s.AddTool(mcp.NewTool("issues.addRelation",
+	s.AddTool(mcp.NewTool("issues_addRelation",
 		mcp.WithDescription("Create a relation between two issues"),
 		mcp.WithNumber("issue_id",
 			mcp.Required(),
@@ -312,28 +312,28 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleIssuesAddRelation)
 
-	s.AddTool(mcp.NewTool("issues.getRequiredFields",
+	s.AddTool(mcp.NewTool("issues_getRequiredFields",
 		mcp.WithDescription("Get required fields for creating an issue in a project/tracker"),
 		mcp.WithString("project", mcp.Required(), mcp.Description("Project name or ID")),
 		mcp.WithString("tracker", mcp.Required(), mcp.Description("Tracker name or ID")),
 	), h.handleIssuesGetRequiredFields)
 
 	// Custom Fields
-	s.AddTool(mcp.NewTool("customFields.list",
+	s.AddTool(mcp.NewTool("customFields_list",
 		mcp.WithDescription("List custom fields available for a project/tracker"),
 		mcp.WithString("project", mcp.Required(), mcp.Description("Project name or ID")),
 		mcp.WithString("tracker", mcp.Description("Tracker name or ID (optional)")),
 	), h.handleCustomFieldsList)
 
-	s.AddTool(mcp.NewTool("customFields.listAll",
-		mcp.WithDescription("List all custom field definitions (requires admin privileges). Use customFields.list for project-specific fields without admin access."),
+	s.AddTool(mcp.NewTool("customFields_listAll",
+		mcp.WithDescription("List all custom field definitions (requires admin privileges). Use customFields_list for project-specific fields without admin access."),
 		mcp.WithString("type",
 			mcp.Description("Filter by customized type: issue, project, user, time_entry, version, group"),
 		),
 	), h.handleCustomFieldsListAll)
 
 	// Projects (detail & update)
-	s.AddTool(mcp.NewTool("projects.getDetail",
+	s.AddTool(mcp.NewTool("projects_getDetail",
 		mcp.WithDescription("Get project details including enabled trackers and custom fields"),
 		mcp.WithString("project",
 			mcp.Required(),
@@ -341,7 +341,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleProjectsGetDetail)
 
-	s.AddTool(mcp.NewTool("projects.update",
+	s.AddTool(mcp.NewTool("projects_update",
 		mcp.WithDescription("Update project settings (trackers, custom fields, name, description). Requires admin or project manager privileges."),
 		mcp.WithString("project",
 			mcp.Required(),
@@ -364,7 +364,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 	), h.handleProjectsUpdate)
 
 	// Time Entries
-	s.AddTool(mcp.NewTool("timeEntries.create",
+	s.AddTool(mcp.NewTool("timeEntries_create",
 		mcp.WithDescription("Create a time entry for an issue"),
 		mcp.WithNumber("issue_id",
 			mcp.Required(),
@@ -385,7 +385,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleTimeEntriesCreate)
 
-	s.AddTool(mcp.NewTool("timeEntries.list",
+	s.AddTool(mcp.NewTool("timeEntries_list",
 		mcp.WithDescription("List time entries with filters"),
 		mcp.WithString("project", mcp.Description("Project name or ID")),
 		mcp.WithString("user", mcp.Description("User name or ID, use 'me' for current user")),
@@ -396,7 +396,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		mcp.WithNumber("limit", mcp.Description("Results limit (default 25)")),
 	), h.handleTimeEntriesList)
 
-	s.AddTool(mcp.NewTool("timeEntries.report",
+	s.AddTool(mcp.NewTool("timeEntries_report",
 		mcp.WithDescription("Generate time entry report with aggregation"),
 		mcp.WithString("project", mcp.Description("Project name or ID")),
 		mcp.WithString("user", mcp.Description("User name or ID")),
@@ -407,8 +407,8 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 	), h.handleTimeEntriesReport)
 
 	// Attachments
-	s.AddTool(mcp.NewTool("attachments.upload",
-		mcp.WithDescription("Upload a file to Redmine and get an upload token. Use the token with issues.create or issues.update to attach the file."),
+	s.AddTool(mcp.NewTool("attachments_upload",
+		mcp.WithDescription("Upload a file to Redmine and get an upload token. Use the token with issues_create or issues_update to attach the file."),
 		mcp.WithString("filename",
 			mcp.Required(),
 			mcp.Description("Filename (e.g., 'report.pdf')"),
@@ -422,7 +422,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleAttachmentsUpload)
 
-	s.AddTool(mcp.NewTool("attachments.download",
+	s.AddTool(mcp.NewTool("attachments_download",
 		mcp.WithDescription("Download an attachment by ID. Returns base64-encoded content."),
 		mcp.WithNumber("attachment_id",
 			mcp.Required(),
@@ -430,7 +430,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleAttachmentsDownload)
 
-	s.AddTool(mcp.NewTool("attachments.list",
+	s.AddTool(mcp.NewTool("attachments_list",
 		mcp.WithDescription("List attachments on an issue"),
 		mcp.WithNumber("issue_id",
 			mcp.Required(),
@@ -438,7 +438,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleAttachmentsList)
 
-	s.AddTool(mcp.NewTool("attachments.uploadAndAttach",
+	s.AddTool(mcp.NewTool("attachments_uploadAndAttach",
 		mcp.WithDescription("Upload a file and attach it to an issue in one step. Most common use case for adding attachments."),
 		mcp.WithNumber("issue_id",
 			mcp.Required(),
@@ -464,23 +464,23 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 	), h.handleAttachmentsUploadAndAttach)
 
 	// Reference
-	s.AddTool(mcp.NewTool("trackers.list",
+	s.AddTool(mcp.NewTool("trackers_list",
 		mcp.WithDescription("List all trackers"),
 	), h.handleTrackersList)
 
-	s.AddTool(mcp.NewTool("statuses.list",
+	s.AddTool(mcp.NewTool("statuses_list",
 		mcp.WithDescription("List all issue statuses"),
 	), h.handleStatusesList)
 
-	s.AddTool(mcp.NewTool("priorities.list",
+	s.AddTool(mcp.NewTool("priorities_list",
 		mcp.WithDescription("List all issue priorities"),
 	), h.handlePrioritiesList)
 
-	s.AddTool(mcp.NewTool("activities.list",
+	s.AddTool(mcp.NewTool("activities_list",
 		mcp.WithDescription("List all time entry activities"),
 	), h.handleActivitiesList)
 
-	s.AddTool(mcp.NewTool("reference.workflow",
+	s.AddTool(mcp.NewTool("reference_workflow",
 		mcp.WithDescription("Show workflow transition rules for trackers. Shows which status transitions are allowed for each tracker."),
 		mcp.WithString("tracker",
 			mcp.Description("Tracker name or ID (optional, shows all trackers if omitted)"),
@@ -489,7 +489,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 
 	// --- Group A: CRUD Gaps ---
 
-	s.AddTool(mcp.NewTool("timeEntries.update",
+	s.AddTool(mcp.NewTool("timeEntries_update",
 		mcp.WithDescription("Update an existing time entry"),
 		mcp.WithNumber("time_entry_id",
 			mcp.Required(),
@@ -509,7 +509,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleTimeEntriesUpdate)
 
-	s.AddTool(mcp.NewTool("timeEntries.delete",
+	s.AddTool(mcp.NewTool("timeEntries_delete",
 		mcp.WithDescription("Delete a time entry"),
 		mcp.WithNumber("time_entry_id",
 			mcp.Required(),
@@ -517,7 +517,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleTimeEntriesDelete)
 
-	s.AddTool(mcp.NewTool("issues.removeWatcher",
+	s.AddTool(mcp.NewTool("issues_removeWatcher",
 		mcp.WithDescription("Remove a watcher from an issue"),
 		mcp.WithNumber("issue_id",
 			mcp.Required(),
@@ -529,7 +529,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleIssuesRemoveWatcher)
 
-	s.AddTool(mcp.NewTool("issues.removeRelation",
+	s.AddTool(mcp.NewTool("issues_removeRelation",
 		mcp.WithDescription("Remove a relation between issues"),
 		mcp.WithNumber("relation_id",
 			mcp.Required(),
@@ -539,7 +539,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 
 	// --- Group E: User Search ---
 
-	s.AddTool(mcp.NewTool("users.search",
+	s.AddTool(mcp.NewTool("users_search",
 		mcp.WithDescription("Search for users by name, project membership, or status"),
 		mcp.WithString("name",
 			mcp.Description("Search by user name (partial match)"),
@@ -557,7 +557,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 
 	// --- Group B: Batch & Copy ---
 
-	s.AddTool(mcp.NewTool("issues.batchUpdate",
+	s.AddTool(mcp.NewTool("issues_batchUpdate",
 		mcp.WithDescription("Update multiple issues at once. Continues on individual failures (partial success)."),
 		mcp.WithArray("issue_ids",
 			mcp.Required(),
@@ -578,7 +578,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleIssuesBatchUpdate)
 
-	s.AddTool(mcp.NewTool("issues.copy",
+	s.AddTool(mcp.NewTool("issues_copy",
 		mcp.WithDescription("Copy an issue, optionally to a different project or with a new subject"),
 		mcp.WithNumber("issue_id",
 			mcp.Required(),
@@ -594,7 +594,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 
 	// --- Group C: Versions ---
 
-	s.AddTool(mcp.NewTool("versions.list",
+	s.AddTool(mcp.NewTool("versions_list",
 		mcp.WithDescription("List all versions/milestones for a project"),
 		mcp.WithString("project",
 			mcp.Required(),
@@ -602,7 +602,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleVersionsList)
 
-	s.AddTool(mcp.NewTool("versions.create",
+	s.AddTool(mcp.NewTool("versions_create",
 		mcp.WithDescription("Create a new version/milestone in a project"),
 		mcp.WithString("project",
 			mcp.Required(),
@@ -628,7 +628,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleVersionsCreate)
 
-	s.AddTool(mcp.NewTool("versions.update",
+	s.AddTool(mcp.NewTool("versions_update",
 		mcp.WithDescription("Update an existing version/milestone"),
 		mcp.WithNumber("version_id",
 			mcp.Required(),
@@ -655,7 +655,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 
 	// --- Group D: Wiki ---
 
-	s.AddTool(mcp.NewTool("wiki.list",
+	s.AddTool(mcp.NewTool("wiki_list",
 		mcp.WithDescription("List all wiki pages for a project"),
 		mcp.WithString("project",
 			mcp.Required(),
@@ -663,7 +663,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleWikiList)
 
-	s.AddTool(mcp.NewTool("wiki.get",
+	s.AddTool(mcp.NewTool("wiki_get",
 		mcp.WithDescription("Get a wiki page with its content"),
 		mcp.WithString("project",
 			mcp.Required(),
@@ -675,7 +675,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleWikiGet)
 
-	s.AddTool(mcp.NewTool("wiki.createOrUpdate",
+	s.AddTool(mcp.NewTool("wiki_createOrUpdate",
 		mcp.WithDescription("Create or update a wiki page"),
 		mcp.WithString("project",
 			mcp.Required(),
@@ -696,8 +696,8 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 
 	// --- Group F: Export ---
 
-	s.AddTool(mcp.NewTool("issues.exportCSV",
-		mcp.WithDescription("Export issues as CSV text. Same filters as issues.search."),
+	s.AddTool(mcp.NewTool("issues_exportCSV",
+		mcp.WithDescription("Export issues as CSV text. Same filters as issues_search."),
 		mcp.WithString("project",
 			mcp.Description("Project name or ID"),
 		),
@@ -726,7 +726,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 
 	// --- Group G: Reports ---
 
-	s.AddTool(mcp.NewTool("reports.weekly",
+	s.AddTool(mcp.NewTool("reports_weekly",
 		mcp.WithDescription("Generate a weekly time report aggregated by day, issue, and activity"),
 		mcp.WithString("user",
 			mcp.Description("User name or ID (default: 'me')"),
@@ -736,7 +736,7 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleReportsWeekly)
 
-	s.AddTool(mcp.NewTool("reports.standup",
+	s.AddTool(mcp.NewTool("reports_standup",
 		mcp.WithDescription("Generate a standup report: yesterday's time entries + today's open issues"),
 		mcp.WithString("user",
 			mcp.Description("User name or ID (default: 'me')"),
@@ -1427,7 +1427,7 @@ func (h *ToolHandlers) handleCustomFieldsListAll(ctx context.Context, req mcp.Ca
 	fields, err := h.client.ListAllCustomFields()
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf(
-			"Requires admin privileges. Use customFields.list with a project/tracker to see fields available in a specific project (no admin required). Error: %v", err)), nil
+			"Requires admin privileges. Use customFields_list with a project/tracker to see fields available in a specific project (no admin required). Error: %v", err)), nil
 	}
 
 	// Optional type filter
@@ -1886,7 +1886,7 @@ func (h *ToolHandlers) handleAttachmentsUpload(ctx context.Context, req mcp.Call
 		"token":    token.Token,
 		"filename": token.Filename,
 		"size":     len(decoded),
-		"message":  "File uploaded. Use the token with issues.create or issues.update to attach it.",
+		"message":  "File uploaded. Use the token with issues_create or issues_update to attach it.",
 	})
 }
 

@@ -55,8 +55,16 @@ X-Redmine-API-Key: user-api-key
 | Command | Transport | API Key Source | Use Case |
 |---------|-----------|----------------|----------|
 | `./server mcp` | stdio | `REDMINE_API_KEY` env | Claude Desktop |
-| `./server mcp --sse` | SSE/HTTP | Header | Docker, Cursor/Cline |
+| `./server mcp --sse` | SSE + Streamable HTTP | Header | Docker, Cursor/Cline, Codex |
 | `./server api` | REST/HTTP | Header | ChatGPT GPT Actions |
+
+The `--sse` mode serves both SSE (`/sse`, `/message`) and Streamable HTTP (`/mcp`) transports on the same port.
+
+### Authentication
+
+Both authentication methods are supported:
+- `X-Redmine-API-Key: <api-key>` header (Cursor, Cline, Claude Code)
+- `Authorization: Bearer <api-key>` header (Codex)
 
 ## MCP Tools
 
@@ -64,42 +72,65 @@ X-Redmine-API-Key: user-api-key
 - `me` - Get current user info
 
 ### Projects
-- `projects.list` - List all projects
-- `projects.create` - Create new project
-- `projects.getDetail` - Get project details (trackers, custom fields)
-- `projects.update` - Update project settings (requires admin/manager)
+- `projects_list` - List all projects
+- `projects_create` - Create new project
+- `projects_getDetail` - Get project details (trackers, custom fields)
+- `projects_update` - Update project settings (requires admin/manager)
 
 ### Issues
-- `issues.search` - Search issues by project, status, assignee, dates, custom fields
-- `issues.getById` - Get issue details with journals, relations, and attachments
-- `issues.create` - Create new issue with custom fields and attachments
-- `issues.update` - Update status, assignee, add notes, attach files
-- `issues.createSubtask` - Create subtask under parent issue
-- `issues.addWatcher` - Add watcher to issue
-- `issues.addRelation` - Create relation between issues
-- `issues.getRequiredFields` - Get required fields for creating issues
+- `issues_search` - Search issues by project, status, assignee, dates, custom fields
+- `issues_getById` - Get issue details with journals, relations, and attachments
+- `issues_create` - Create new issue with custom fields and attachments
+- `issues_update` - Update status, assignee, add notes, attach files
+- `issues_createSubtask` - Create subtask under parent issue
+- `issues_addWatcher` - Add watcher to issue
+- `issues_removeWatcher` - Remove watcher from issue
+- `issues_addRelation` - Create relation between issues
+- `issues_removeRelation` - Remove relation between issues
+- `issues_getRequiredFields` - Get required fields for creating issues
+- `issues_batchUpdate` - Batch update multiple issues
+- `issues_copy` - Copy an issue to another project
+- `issues_exportCSV` - Export issues to CSV format
 
 ### Custom Fields
-- `customFields.list` - List custom fields for a project/tracker
-- `customFields.listAll` - List all custom field definitions (admin)
+- `customFields_list` - List custom fields for a project/tracker
 
 ### Time Entries
-- `timeEntries.create` - Log time on issue
-- `timeEntries.list` - List time entries with filters
-- `timeEntries.report` - Generate aggregated time reports
+- `timeEntries_create` - Log time on issue
+- `timeEntries_list` - List time entries with filters
+- `timeEntries_report` - Generate aggregated time reports
+- `timeEntries_update` - Update a time entry
+- `timeEntries_delete` - Delete a time entry
 
 ### Attachments
-- `attachments.upload` - Upload a file, get upload token
-- `attachments.download` - Download attachment (returns base64)
-- `attachments.list` - List attachments on an issue
-- `attachments.uploadAndAttach` - Upload and attach to issue in one step
+- `attachments_upload` - Upload a file, get upload token
+- `attachments_download` - Download attachment (returns base64)
+- `attachments_list` - List attachments on an issue
+- `attachments_uploadAndAttach` - Upload and attach to issue in one step
+
+### Versions
+- `versions_list` - List versions in a project
+- `versions_create` - Create a new version
+- `versions_update` - Update a version
+
+### Wiki
+- `wiki_list` - List wiki pages in a project
+- `wiki_get` - Get wiki page content
+- `wiki_createOrUpdate` - Create or update a wiki page
+
+### Users
+- `users_search` - Search users by name
+
+### Reports
+- `reports_weekly` - Generate weekly report
+- `reports_standup` - Generate standup report
 
 ### Reference
-- `trackers.list` - List all trackers
-- `statuses.list` - List all issue statuses
-- `priorities.list` - List all issue priorities
-- `activities.list` - List time entry activities
-- `reference.workflow` - Show workflow transition rules
+- `trackers_list` - List all trackers
+- `statuses_list` - List all issue statuses
+- `priorities_list` - List all issue priorities
+- `activities_list` - List time entry activities
+- `reference_workflow` - Show workflow transition rules
 
 ## Name Resolution
 
@@ -294,6 +325,18 @@ make docker-build
     }
   }
 }
+```
+
+### OpenAI Codex CLI (`~/.codex/config.toml`)
+```toml
+[mcp_servers.redmine]
+url = "http://localhost:8080/mcp"
+bearer_token_env_var = "REDMINE_API_KEY"
+```
+
+Set the environment variable:
+```bash
+export REDMINE_API_KEY="your-api-key"
 ```
 
 ### ChatGPT GPT Actions

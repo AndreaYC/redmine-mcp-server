@@ -33,7 +33,7 @@ func main() {
 
 	// Global flags
 	rootCmd.PersistentFlags().StringVar(&redmineURL, "redmine-url", os.Getenv("REDMINE_URL"), "Redmine server URL")
-	rootCmd.PersistentFlags().IntVar(&port, "port", 8080, "Server port (for SSE and API modes)")
+	rootCmd.PersistentFlags().IntVar(&port, "port", 8080, "Server port (for SSE, Streamable HTTP, and API modes)")
 	rootCmd.PersistentFlags().StringVar(&logLevel, "log-level", "info", "Log level (debug, info, warn, error)")
 	rootCmd.PersistentFlags().StringVar(&customFieldRulesFile, "custom-field-rules", os.Getenv("CUSTOM_FIELD_RULES_FILE"), "Path to custom field validation rules JSON file")
 	rootCmd.PersistentFlags().StringVar(&workflowRulesFile, "workflow-rules", os.Getenv("WORKFLOW_RULES_FILE"), "Path to workflow transition rules JSON file")
@@ -42,12 +42,12 @@ func main() {
 	mcpCmd := &cobra.Command{
 		Use:   "mcp",
 		Short: "Start MCP server",
-		Long:  "Start the MCP server in stdio or SSE mode",
+		Long:  "Start the MCP server in stdio or HTTP mode (SSE + Streamable HTTP)",
 		RunE:  runMCP,
 	}
 
 	var sseMode bool
-	mcpCmd.Flags().BoolVar(&sseMode, "sse", false, "Run in SSE mode instead of stdio")
+	mcpCmd.Flags().BoolVar(&sseMode, "sse", false, "Run in HTTP mode with SSE and Streamable HTTP transports")
 
 	// API command
 	apiCmd := &cobra.Command{

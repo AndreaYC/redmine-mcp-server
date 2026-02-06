@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -51,7 +52,6 @@ func (s *Server) Run() error {
 	)
 
 	if s.config.SSEMode {
-		// SSE mode - create client per request from header
 		return s.runSSE()
 	}
 
@@ -101,26 +101,31 @@ func (s *Server) loadWorkflowRules() *redmine.WorkflowRules {
 	return rules
 }
 
-// runSSE starts the server in SSE mode
+// runSSE starts the server in HTTP mode with both SSE and Streamable HTTP transports
 func (s *Server) runSSE() error {
 	addr := fmt.Sprintf(":%d", s.config.Port)
 
-	slog.Info("Starting MCP server in SSE mode",
+	slog.Info("Starting MCP server in HTTP mode (SSE + Streamable HTTP)",
 		"address", addr,
 		"redmine_url", s.config.RedmineURL,
 	)
 
-	// Create session manager for multi-tenant SSE
 	rules := s.loadCustomFieldRules()
 	workflow := s.loadWorkflowRules()
-	sessionMgr := newSessionManager(s.config.RedmineURL, rules, workflow)
+
+	// SSE transport: /sse, /message
+	sseMgr := newSessionManager(s.config.RedmineURL, rules, workflow)
+
+	// Streamable HTTP transport: /mcp
+	streamableMgr := newStreamableSessionManager(s.config.RedmineURL, rules, workflow)
 
 	// Rate limiter: 100 requests per minute per IP
 	rateLimiter := newSimpleRateLimiter(100, time.Minute)
 
 	mux := http.NewServeMux()
-	mux.HandleFunc("/sse", sessionMgr.handleSSE)
-	mux.HandleFunc("/message", sessionMgr.handleMessage)
+	mux.HandleFunc("/sse", sseMgr.handleSSE)
+	mux.HandleFunc("/message", sseMgr.handleMessage)
+	mux.HandleFunc("/mcp", streamableMgr.handleMCP)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
@@ -190,9 +195,9 @@ func (m *sessionManager) getOrCreateServer(apiKey string) *server.SSEServer {
 }
 
 func (m *sessionManager) handleSSE(w http.ResponseWriter, r *http.Request) {
-	apiKey := r.Header.Get("X-Redmine-API-Key")
+	apiKey := extractAPIKey(r)
 	if apiKey == "" {
-		http.Error(w, "Missing X-Redmine-API-Key header", http.StatusUnauthorized)
+		http.Error(w, "Missing API key (use X-Redmine-API-Key header or Authorization: Bearer token)", http.StatusUnauthorized)
 		return
 	}
 
@@ -206,14 +211,95 @@ func (m *sessionManager) handleMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	apiKey := r.Header.Get("X-Redmine-API-Key")
+	apiKey := extractAPIKey(r)
 	if apiKey == "" {
-		http.Error(w, "Missing X-Redmine-API-Key header", http.StatusUnauthorized)
+		http.Error(w, "Missing API key (use X-Redmine-API-Key header or Authorization: Bearer token)", http.StatusUnauthorized)
 		return
 	}
 
 	sseServer := m.getOrCreateServer(apiKey)
 	sseServer.ServeHTTP(w, r)
+}
+
+// streamableSessionManager manages Streamable HTTP sessions for multi-tenant access
+type streamableSessionManager struct {
+	mu         sync.RWMutex
+	servers    map[string]*server.StreamableHTTPServer
+	redmineURL string
+	rules      *redmine.CustomFieldRules
+	workflow   *redmine.WorkflowRules
+}
+
+func newStreamableSessionManager(redmineURL string, rules *redmine.CustomFieldRules, workflow *redmine.WorkflowRules) *streamableSessionManager {
+	return &streamableSessionManager{
+		servers:    make(map[string]*server.StreamableHTTPServer),
+		redmineURL: redmineURL,
+		rules:      rules,
+		workflow:   workflow,
+	}
+}
+
+func (m *streamableSessionManager) getOrCreateServer(apiKey string) *server.StreamableHTTPServer {
+	m.mu.RLock()
+	if srv, ok := m.servers[apiKey]; ok {
+		m.mu.RUnlock()
+		return srv
+	}
+	m.mu.RUnlock()
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	// Double-check after acquiring write lock
+	if srv, ok := m.servers[apiKey]; ok {
+		return srv
+	}
+
+	client := redmine.NewClient(m.redmineURL, apiKey)
+
+	mcpServer := server.NewMCPServer(
+		ServerName,
+		ServerVersion,
+		server.WithToolCapabilities(false),
+	)
+
+	handler := NewToolHandlers(client, m.rules, m.workflow)
+	handler.RegisterTools(mcpServer)
+
+	httpServer := server.NewStreamableHTTPServer(mcpServer)
+	m.servers[apiKey] = httpServer
+
+	slog.Info("Created new Streamable HTTP server for API key", "key_prefix", apiKey[:8]+"...")
+
+	return httpServer
+}
+
+func (m *streamableSessionManager) handleMCP(w http.ResponseWriter, r *http.Request) {
+	apiKey := extractAPIKey(r)
+	if apiKey == "" {
+		http.Error(w, "Missing API key (use X-Redmine-API-Key header or Authorization: Bearer token)", http.StatusUnauthorized)
+		return
+	}
+
+	httpServer := m.getOrCreateServer(apiKey)
+	httpServer.ServeHTTP(w, r)
+}
+
+// extractAPIKey extracts the API key from the request.
+// It first checks for X-Redmine-API-Key header, then falls back to Authorization: Bearer token.
+func extractAPIKey(r *http.Request) string {
+	// First, try X-Redmine-API-Key header
+	if apiKey := r.Header.Get("X-Redmine-API-Key"); apiKey != "" {
+		return apiKey
+	}
+
+	// Fallback to Authorization: Bearer token
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer ") {
+		return strings.TrimPrefix(auth, "Bearer ")
+	}
+
+	return ""
 }
 
 // GetEnvConfig gets configuration from environment variables
