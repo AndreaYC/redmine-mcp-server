@@ -7,6 +7,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -555,6 +556,49 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleUsersSearch)
 
+	// --- Global Search ---
+
+	s.AddTool(mcp.NewTool("search_global",
+		mcp.WithDescription("Search across all Redmine resources (issues, wiki, news, documents, changesets, messages, projects)"),
+		mcp.WithString("q",
+			mcp.Required(),
+			mcp.Description("Search query"),
+		),
+		mcp.WithString("scope",
+			mcp.Description("Search scope: all (default), my_projects, subprojects"),
+		),
+		mcp.WithBoolean("titles_only",
+			mcp.Description("Match only in titles (default: false)"),
+		),
+		mcp.WithBoolean("issues",
+			mcp.Description("Include issues in results"),
+		),
+		mcp.WithBoolean("wiki_pages",
+			mcp.Description("Include wiki pages in results"),
+		),
+		mcp.WithBoolean("news",
+			mcp.Description("Include news in results"),
+		),
+		mcp.WithBoolean("documents",
+			mcp.Description("Include documents in results"),
+		),
+		mcp.WithBoolean("changesets",
+			mcp.Description("Include changesets in results"),
+		),
+		mcp.WithBoolean("messages",
+			mcp.Description("Include forum messages in results"),
+		),
+		mcp.WithBoolean("projects",
+			mcp.Description("Include projects in results"),
+		),
+		mcp.WithNumber("offset",
+			mcp.Description("Offset for pagination (default: 0)"),
+		),
+		mcp.WithNumber("limit",
+			mcp.Description("Max results to return (default: 25)"),
+		),
+	), h.handleSearchGlobal)
+
 	// --- Group B: Batch & Copy ---
 
 	s.AddTool(mcp.NewTool("issues_batchUpdate",
@@ -1081,13 +1125,15 @@ func (h *ToolHandlers) handleIssuesCreate(ctx context.Context, req mcp.CallToolR
 		}
 	}
 
-	if customFields := getMapArg(req, "custom_fields"); customFields != nil {
-		resolved, err := h.resolveCustomFields(customFields, projectID, trackerID)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		params.CustomFields = resolved
+	customFields := getMapArg(req, "custom_fields")
+	if customFields == nil {
+		customFields = map[string]any{}
 	}
+	resolved, err := h.resolveCustomFields(customFields, projectID, trackerID)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	params.CustomFields = resolved
 
 	if tokens := getArrayArg(req, "upload_tokens"); tokens != nil {
 		uploads, err := parseUploadTokens(tokens)
@@ -1267,13 +1313,15 @@ func (h *ToolHandlers) handleIssuesCreateSubtask(ctx context.Context, req mcp.Ca
 		}
 	}
 
-	if customFields := getMapArg(req, "custom_fields"); customFields != nil {
-		resolved, err := h.resolveCustomFields(customFields, parent.Project.ID, params.TrackerID)
-		if err != nil {
-			return mcp.NewToolResultError(err.Error()), nil
-		}
-		params.CustomFields = resolved
+	customFields := getMapArg(req, "custom_fields")
+	if customFields == nil {
+		customFields = map[string]any{}
 	}
+	resolved, err := h.resolveCustomFields(customFields, parent.Project.ID, params.TrackerID)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	params.CustomFields = resolved
 
 	issue, err := h.client.CreateIssue(params)
 	if err != nil {
@@ -2335,6 +2383,58 @@ func (h *ToolHandlers) handleUsersSearch(ctx context.Context, req mcp.CallToolRe
 	})
 }
 
+// --- Global Search ---
+
+func (h *ToolHandlers) handleSearchGlobal(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	q := req.GetString("q", "")
+	if q == "" {
+		return mcp.NewToolResultError("q (search query) is required"), nil
+	}
+
+	params := redmine.GlobalSearchParams{
+		Query:      q,
+		Scope:      req.GetString("scope", ""),
+		TitlesOnly: req.GetBool("titles_only", false),
+		Issues:     req.GetBool("issues", false),
+		WikiPages:  req.GetBool("wiki_pages", false),
+		News:       req.GetBool("news", false),
+		Documents:  req.GetBool("documents", false),
+		Changesets: req.GetBool("changesets", false),
+		Messages:   req.GetBool("messages", false),
+		Projects:   req.GetBool("projects", false),
+		Offset:     req.GetInt("offset", 0),
+		Limit:      req.GetInt("limit", 25),
+	}
+
+	results, total, err := h.client.GlobalSearch(params)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to search: %v", err)), nil
+	}
+
+	items := make([]map[string]any, len(results))
+	for i, r := range results {
+		item := map[string]any{
+			"id":    r.ID,
+			"title": r.Title,
+			"type":  r.Type,
+			"url":   r.URL,
+		}
+		if r.Description != "" {
+			item["description"] = r.Description
+		}
+		if r.Datetime != "" {
+			item["datetime"] = r.Datetime
+		}
+		items[i] = item
+	}
+
+	return jsonResult(map[string]any{
+		"results":     items,
+		"count":       len(results),
+		"total_count": total,
+	})
+}
+
 // --- Group B: Batch & Copy ---
 
 func (h *ToolHandlers) handleIssuesBatchUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -3196,6 +3296,24 @@ func (h *ToolHandlers) resolveCustomFields(fields map[string]any, projectID int,
 		return nil, fmt.Errorf("custom field(s) not found: %s\nAvailable fields: %s",
 			strings.Join(unknownFields, ", "),
 			strings.Join(availableFields, ", "))
+	}
+
+	// Check for missing required fields (per-tracker)
+	if h.rules != nil && trackerID > 0 {
+		var missing []string
+		for idStr, rule := range h.rules.Fields {
+			if !slices.Contains(rule.RequiredByTrackers, trackerID) {
+				continue
+			}
+			if _, exists := result[idStr]; !exists {
+				missing = append(missing, fmt.Sprintf("%s (ID: %s, values: %s)",
+					rule.Name, idStr, strings.Join(rule.Values, ", ")))
+			}
+		}
+		if len(missing) > 0 {
+			sort.Strings(missing)
+			return nil, fmt.Errorf("required custom field(s) missing: %s", strings.Join(missing, "; "))
+		}
 	}
 
 	return result, nil

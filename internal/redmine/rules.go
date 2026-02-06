@@ -4,14 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 )
 
 // CustomFieldRule defines valid values for a custom field
 type CustomFieldRule struct {
-	Name   string   `json:"name"`
-	Values []string `json:"values"`
+	Name               string   `json:"name"`
+	Values             []string `json:"values"`
+	RequiredByTrackers []int    `json:"required_by_trackers,omitempty"`
 }
 
 // CustomFieldRules holds validation rules for custom fields
@@ -51,6 +53,11 @@ func (r *CustomFieldRules) ValidateValue(fieldID int, value string) (string, err
 		return value, nil // no rules for this field, pass through
 	}
 
+	// Free-text field (no constrained values) — pass through
+	if len(rule.Values) == 0 {
+		return value, nil
+	}
+
 	// Exact match
 	for _, v := range rule.Values {
 		if v == value {
@@ -86,4 +93,21 @@ func (r *CustomFieldRules) ValidateValues(fieldID int, values []string) ([]strin
 		result[i] = corrected
 	}
 	return result, nil
+}
+
+// GetRequiredFieldsForTracker returns field IDs and names required for a specific tracker.
+func (r *CustomFieldRules) GetRequiredFieldsForTracker(trackerID int) map[int]string {
+	result := make(map[int]string)
+	if r == nil || trackerID == 0 {
+		return result
+	}
+	for idStr, rule := range r.Fields {
+		if !slices.Contains(rule.RequiredByTrackers, trackerID) {
+			continue
+		}
+		if id, err := strconv.Atoi(idStr); err == nil {
+			result[id] = rule.Name
+		}
+	}
+	return result
 }

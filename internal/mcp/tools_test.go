@@ -1,7 +1,11 @@
 package mcp
 
 import (
+	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -918,6 +922,237 @@ func TestParseUploadTokens(t *testing.T) {
 		_, err := parseUploadTokens(tokens)
 		if err == nil {
 			t.Fatal("expected error for empty filename string")
+		}
+	})
+}
+
+// --- TestHandleSearchGlobal ---
+
+func TestHandleSearchGlobal(t *testing.T) {
+	// Set up a mock Redmine server that responds to /search.json
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/search.json" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+
+		q := r.URL.Query().Get("q")
+		if q == "" {
+			http.Error(w, "missing query", http.StatusBadRequest)
+			return
+		}
+
+		resp := map[string]any{
+			"results": []map[string]any{
+				{
+					"id":          42,
+					"title":       "Test Issue #42",
+					"type":        "issue",
+					"url":         "/issues/42",
+					"description": "Found by search",
+					"datetime":    "2025-01-15T10:30:00Z",
+				},
+				{
+					"id":          7,
+					"title":       "Wiki: Getting Started",
+					"type":        "wiki-page",
+					"url":         "/projects/demo/wiki/Getting_Started",
+					"description": "",
+					"datetime":    "2025-01-10T08:00:00Z",
+				},
+			},
+			"total_count": 2,
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(resp)
+	}))
+	defer mockServer.Close()
+
+	client := redmine.NewClient(mockServer.URL, "test-api-key")
+	h := NewToolHandlers(client, nil, nil)
+
+	t.Run("basic search returns results", func(t *testing.T) {
+		req := gomcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{
+			"q": "test",
+		}
+
+		result, err := h.handleSearchGlobal(context.Background(), req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result == nil {
+			t.Fatal("expected non-nil result")
+		}
+		if result.IsError {
+			t.Fatalf("expected success, got error: %v", result.Content)
+		}
+
+		// Parse the JSON text result
+		textContent, ok := result.Content[0].(gomcp.TextContent)
+		if !ok {
+			t.Fatalf("expected TextContent, got %T", result.Content[0])
+		}
+
+		var data map[string]any
+		if err := json.Unmarshal([]byte(textContent.Text), &data); err != nil {
+			t.Fatalf("failed to parse result JSON: %v", err)
+		}
+
+		if data["count"].(float64) != 2 {
+			t.Errorf("expected count=2, got %v", data["count"])
+		}
+		if data["total_count"].(float64) != 2 {
+			t.Errorf("expected total_count=2, got %v", data["total_count"])
+		}
+
+		results, ok := data["results"].([]any)
+		if !ok || len(results) != 2 {
+			t.Fatalf("expected 2 results, got %v", data["results"])
+		}
+
+		first := results[0].(map[string]any)
+		if first["id"].(float64) != 42 {
+			t.Errorf("expected first result id=42, got %v", first["id"])
+		}
+		if first["type"].(string) != "issue" {
+			t.Errorf("expected first result type='issue', got %v", first["type"])
+		}
+		if first["title"].(string) != "Test Issue #42" {
+			t.Errorf("expected first result title='Test Issue #42', got %v", first["title"])
+		}
+	})
+
+	t.Run("missing query returns error", func(t *testing.T) {
+		req := gomcp.CallToolRequest{}
+		req.Params.Arguments = map[string]any{}
+
+		result, err := h.handleSearchGlobal(context.Background(), req)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !result.IsError {
+			t.Fatal("expected error result for missing query")
+		}
+	})
+}
+
+func TestResolveCustomFieldsRequiredValidation(t *testing.T) {
+	// Mock Redmine server that returns empty issues (no custom field defs from API)
+	mockServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"issues":      []any{},
+			"total_count": 0,
+		})
+	}))
+	defer mockServer.Close()
+
+	rules := &redmine.CustomFieldRules{
+		Fields: map[string]redmine.CustomFieldRule{
+			"223": {
+				Name:               "SW_Category",
+				Values:             []string{"Debug", "Other"},
+				RequiredByTrackers: []int{32}, // SW_Task
+			},
+			"27": {
+				Name:               "HW Version",
+				RequiredByTrackers: []int{4, 22}, // Bug, EE_Task
+			},
+			"23": {
+				Name:   "Component",
+				Values: []string{"HW", "SW"},
+			},
+		},
+	}
+
+	client := redmine.NewClient(mockServer.URL, "test-api-key")
+	h := NewToolHandlers(client, rules, nil)
+
+	t.Run("missing required field for matching tracker returns error", func(t *testing.T) {
+		fields := map[string]any{}
+		_, err := h.resolveCustomFields(fields, 1, 32) // tracker 32 = SW_Task
+		if err == nil {
+			t.Fatal("expected error for missing required field")
+		}
+		if !strings.Contains(err.Error(), "required custom field(s) missing") {
+			t.Fatalf("expected 'required custom field(s) missing' in error, got: %v", err)
+		}
+		if !strings.Contains(err.Error(), "SW_Category") {
+			t.Fatalf("expected 'SW_Category' in error, got: %v", err)
+		}
+	})
+
+	t.Run("field required for tracker A not required for tracker B", func(t *testing.T) {
+		fields := map[string]any{}
+		// tracker 1 = Requirement (no required fields)
+		result, err := h.resolveCustomFields(fields, 1, 1)
+		if err != nil {
+			t.Fatalf("unexpected error for tracker with no required fields: %v", err)
+		}
+		if len(result) != 0 {
+			t.Fatalf("expected empty result, got %v", result)
+		}
+	})
+
+	t.Run("providing required field passes validation", func(t *testing.T) {
+		fields := map[string]any{
+			"223": "Debug",
+		}
+		result, err := h.resolveCustomFields(fields, 1, 32)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result["223"] != "Debug" {
+			t.Fatalf("expected 'Debug', got %v", result["223"])
+		}
+	})
+
+	t.Run("providing required field by name passes validation", func(t *testing.T) {
+		fields := map[string]any{
+			"SW_Category": "Other",
+		}
+		result, err := h.resolveCustomFields(fields, 1, 32)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if result["223"] != "Other" {
+			t.Fatalf("expected 'Other', got %v", result["223"])
+		}
+	})
+
+	t.Run("multiple required fields for Bug tracker", func(t *testing.T) {
+		fields := map[string]any{}
+		_, err := h.resolveCustomFields(fields, 1, 4) // tracker 4 = Bug
+		if err == nil {
+			t.Fatal("expected error for missing required fields")
+		}
+		if !strings.Contains(err.Error(), "HW Version") {
+			t.Fatalf("expected 'HW Version' in error, got: %v", err)
+		}
+	})
+
+	t.Run("trackerID 0 skips required check", func(t *testing.T) {
+		fields := map[string]any{}
+		result, err := h.resolveCustomFields(fields, 1, 0)
+		if err != nil {
+			t.Fatalf("unexpected error with trackerID 0: %v", err)
+		}
+		if len(result) != 0 {
+			t.Fatalf("expected empty result, got %v", result)
+		}
+	})
+
+	t.Run("no required fields with nil rules passes", func(t *testing.T) {
+		hNoRules := NewToolHandlers(client, nil, nil)
+		fields := map[string]any{}
+		result, err := hNoRules.resolveCustomFields(fields, 1, 32)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(result) != 0 {
+			t.Fatalf("expected empty result, got %v", result)
 		}
 	})
 }

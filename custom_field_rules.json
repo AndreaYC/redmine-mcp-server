@@ -1,5 +1,9 @@
 {
   "fields": {
+    "15": {
+      "name": "FW Version",
+      "required_by_trackers": [4, 18]
+    },
     "23": {
       "name": "Component",
       "values": [
@@ -35,8 +39,66 @@
         "TPL"
       ]
     },
+    "26": {
+      "name": "Issue Finder",
+      "required_by_trackers": [4, 18],
+      "values": [
+        "FW&SW RD",
+        "EE",
+        "ATCA-SI",
+        "DQA",
+        "SWQA",
+        "SI(signal integrity)",
+        "Power Validation",
+        "LAB",
+        "AE",
+        "Power Design",
+        "Customer",
+        "PM",
+        "QA",
+        "RMA",
+        "Factory",
+        "Other",
+        "Common Issue"
+      ]
+    },
+    "27": {
+      "name": "HW Version",
+      "required_by_trackers": [4, 22]
+    },
+    "126": {
+      "name": "Bug Create After MP",
+      "required_by_trackers": [4],
+      "values": [
+        "1",
+        "0"
+      ]
+    },
+    "221": {
+      "name": "NPI_BIOS",
+      "required_by_trackers": [23],
+      "values": [
+        "Pre-Study",
+        "NPI",
+        "Maintenance",
+        "Customization",
+        "Others"
+      ]
+    },
+    "222": {
+      "name": "PD_Allocation",
+      "required_by_trackers": [23],
+      "values": [
+        "CIP",
+        "SKY Server",
+        "ENPD",
+        "Video Platform & DMS",
+        "Others"
+      ]
+    },
     "223": {
       "name": "SW_Category",
+      "required_by_trackers": [32],
       "values": [
         "Planning(Pre-study & CRB evaluation & GID preparation)",
         "Schematic review",
