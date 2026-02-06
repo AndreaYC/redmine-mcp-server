@@ -1806,6 +1806,94 @@ func (s *Server) handleSearchUsers(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// --- Global Search ---
+
+// @Summary Search across all Redmine resources
+// @Description Search issues, wiki pages, news, documents, changesets, messages, and projects
+// @Tags Search
+// @Accept json
+// @Produce json
+// @Security ApiKeyAuth
+// @Param q query string true "Search query"
+// @Param scope query string false "Search scope: all, my_projects, subprojects"
+// @Param titles_only query bool false "Match only in titles"
+// @Param issues query bool false "Include issues"
+// @Param wiki_pages query bool false "Include wiki pages"
+// @Param news query bool false "Include news"
+// @Param documents query bool false "Include documents"
+// @Param changesets query bool false "Include changesets"
+// @Param messages query bool false "Include forum messages"
+// @Param projects query bool false "Include projects"
+// @Param offset query int false "Offset for pagination"
+// @Param limit query int false "Max results" default(25)
+// @Success 200 {object} map[string]any
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Router /search [get]
+func (s *Server) handleGlobalSearch(w http.ResponseWriter, r *http.Request) {
+	client := getClient(r.Context())
+
+	q := r.URL.Query()
+	query := q.Get("q")
+	if query == "" {
+		writeError(w, http.StatusBadRequest, "q (search query) is required")
+		return
+	}
+
+	params := redmine.GlobalSearchParams{
+		Query:      query,
+		Scope:      q.Get("scope"),
+		TitlesOnly: q.Get("titles_only") == "true" || q.Get("titles_only") == "1",
+		Issues:     q.Get("issues") == "true" || q.Get("issues") == "1",
+		WikiPages:  q.Get("wiki_pages") == "true" || q.Get("wiki_pages") == "1",
+		News:       q.Get("news") == "true" || q.Get("news") == "1",
+		Documents:  q.Get("documents") == "true" || q.Get("documents") == "1",
+		Changesets: q.Get("changesets") == "true" || q.Get("changesets") == "1",
+		Messages:   q.Get("messages") == "true" || q.Get("messages") == "1",
+		Projects:   q.Get("projects") == "true" || q.Get("projects") == "1",
+	}
+
+	if offset := q.Get("offset"); offset != "" {
+		if n, err := strconv.Atoi(offset); err == nil {
+			params.Offset = n
+		}
+	}
+	if limit := q.Get("limit"); limit != "" {
+		if n, err := strconv.Atoi(limit); err == nil {
+			params.Limit = n
+		}
+	}
+
+	results, total, err := client.GlobalSearch(params)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	items := make([]map[string]any, len(results))
+	for i, r := range results {
+		item := map[string]any{
+			"id":    r.ID,
+			"title": r.Title,
+			"type":  r.Type,
+			"url":   r.URL,
+		}
+		if r.Description != "" {
+			item["description"] = r.Description
+		}
+		if r.Datetime != "" {
+			item["datetime"] = r.Datetime
+		}
+		items[i] = item
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"results":     items,
+		"count":       len(results),
+		"total_count": total,
+	})
+}
+
 // --- Group B: Batch & Copy ---
 
 // @Summary Batch update issues

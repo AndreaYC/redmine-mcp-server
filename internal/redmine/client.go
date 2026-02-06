@@ -1558,6 +1558,97 @@ func (c *Client) CreateProjectFile(params CreateProjectFileParams) (*ProjectFile
 	return &resp.File, nil
 }
 
+// SearchResult represents a result from Redmine global search
+type SearchResult struct {
+	ID          int    `json:"id"`
+	Title       string `json:"title"`
+	Type        string `json:"type"`
+	URL         string `json:"url"`
+	Description string `json:"description"`
+	Datetime    string `json:"datetime"`
+}
+
+// GlobalSearchParams are parameters for global search across all Redmine resources
+type GlobalSearchParams struct {
+	Query      string
+	Scope      string // "all", "my_projects", "subprojects"
+	AllWords   bool
+	TitlesOnly bool
+	Issues     bool
+	News       bool
+	Documents  bool
+	Changesets bool
+	WikiPages  bool
+	Messages   bool
+	Projects   bool
+	Offset     int
+	Limit      int
+}
+
+// GlobalSearch searches across all Redmine resources (issues, wiki, news, etc.)
+func (c *Client) GlobalSearch(params GlobalSearchParams) ([]SearchResult, int, error) {
+	query := url.Values{}
+	query.Set("q", params.Query)
+
+	if params.Scope != "" {
+		query.Set("scope", params.Scope)
+	}
+	if params.AllWords {
+		query.Set("all_words", "1")
+	}
+	if params.TitlesOnly {
+		query.Set("titles_only", "1")
+	}
+
+	// Resource type filters — Redmine uses these as toggles
+	if params.Issues {
+		query.Set("issues", "1")
+	}
+	if params.News {
+		query.Set("news", "1")
+	}
+	if params.Documents {
+		query.Set("documents", "1")
+	}
+	if params.Changesets {
+		query.Set("changesets", "1")
+	}
+	if params.WikiPages {
+		query.Set("wiki_pages", "1")
+	}
+	if params.Messages {
+		query.Set("messages", "1")
+	}
+	if params.Projects {
+		query.Set("projects", "1")
+	}
+
+	if params.Offset > 0 {
+		query.Set("offset", strconv.Itoa(params.Offset))
+	}
+	if params.Limit > 0 {
+		query.Set("limit", strconv.Itoa(params.Limit))
+	} else {
+		query.Set("limit", "25")
+	}
+
+	path := "/search.json?" + query.Encode()
+	data, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	var resp struct {
+		Results    []SearchResult `json:"results"`
+		TotalCount int            `json:"total_count"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, 0, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return resp.Results, resp.TotalCount, nil
+}
+
 // DMSFFile represents a file in DMSF
 type DMSFFile struct {
 	ID          int    `json:"id"`

@@ -143,6 +143,9 @@ func (s *Server) setupRoutes() {
 		// Users
 		r.Get("/users", s.handleSearchUsers)
 
+		// Search
+		r.Get("/search", s.handleGlobalSearch)
+
 		// Versions
 		r.Get("/projects/{id}/versions", s.handleListVersions)
 		r.Post("/projects/{id}/versions", s.handleCreateVersion)
@@ -967,6 +970,45 @@ paths:
             text/csv:
               schema:
                 type: string
+  /search:
+    get:
+      summary: Search across all Redmine resources
+      tags: [Search]
+      parameters:
+        - name: q
+          in: query
+          required: true
+          schema:
+            type: string
+          description: Search query
+        - name: scope
+          in: query
+          schema:
+            type: string
+          description: "Search scope: all, my_projects, subprojects"
+        - name: titles_only
+          in: query
+          schema:
+            type: boolean
+          description: Match only in titles
+        - name: issues
+          in: query
+          schema:
+            type: boolean
+          description: Include issues
+        - name: wiki_pages
+          in: query
+          schema:
+            type: boolean
+          description: Include wiki pages
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 25
+      responses:
+        '200':
+          description: Search results
   /reports/weekly:
     get:
       summary: Weekly time report
