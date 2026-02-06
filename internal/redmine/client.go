@@ -30,6 +30,11 @@ func NewClient(baseURL, apiKey string) *Client {
 	}
 }
 
+// BaseURL returns the Redmine base URL
+func (c *Client) BaseURL() string {
+	return c.baseURL
+}
+
 // doRequest performs an HTTP request to the Redmine API
 func (c *Client) doRequest(method, path string, body any) ([]byte, error) {
 	var bodyReader io.Reader
@@ -372,22 +377,23 @@ type UploadToken struct {
 
 // Issue represents a Redmine issue
 type Issue struct {
-	ID          int     `json:"id"`
-	Project     IDName  `json:"project"`
-	Tracker     IDName  `json:"tracker"`
-	Status      IDName  `json:"status"`
-	Priority    IDName  `json:"priority"`
-	Author      IDName  `json:"author"`
-	AssignedTo  *IDName `json:"assigned_to,omitempty"`
-	Subject     string  `json:"subject"`
-	Description string  `json:"description"`
-	StartDate   string  `json:"start_date,omitempty"`
-	DueDate     string  `json:"due_date,omitempty"`
-	DoneRatio   int     `json:"done_ratio"`
-	CreatedOn   string  `json:"created_on"`
-	UpdatedOn   string  `json:"updated_on"`
-	ClosedOn    string  `json:"closed_on,omitempty"`
-	Parent      *struct {
+	ID           int     `json:"id"`
+	Project      IDName  `json:"project"`
+	Tracker      IDName  `json:"tracker"`
+	Status       IDName  `json:"status"`
+	Priority     IDName  `json:"priority"`
+	Author       IDName  `json:"author"`
+	AssignedTo   *IDName `json:"assigned_to,omitempty"`
+	FixedVersion *IDName `json:"fixed_version,omitempty"`
+	Subject      string  `json:"subject"`
+	Description  string  `json:"description"`
+	StartDate    string  `json:"start_date,omitempty"`
+	DueDate      string  `json:"due_date,omitempty"`
+	DoneRatio    int     `json:"done_ratio"`
+	CreatedOn    string  `json:"created_on"`
+	UpdatedOn    string  `json:"updated_on"`
+	ClosedOn     string  `json:"closed_on,omitempty"`
+	Parent       *struct {
 		ID int `json:"id"`
 	} `json:"parent,omitempty"`
 	CustomFields    []CustomField `json:"custom_fields,omitempty"`
@@ -444,6 +450,7 @@ type SearchIssuesParams struct {
 	TrackerID    int
 	StatusID     string // "open", "closed", "*", or specific status ID
 	AssignedToID string // "me" or user ID
+	VersionID    string // Version/milestone ID or name
 	Subject      string // Search keyword for subject (partial match)
 	ParentID          int
 	CreatedOn         string // Redmine date filter, e.g., ">=2024-01-01"
@@ -469,6 +476,9 @@ func (c *Client) SearchIssues(params SearchIssuesParams) ([]Issue, int, error) {
 	}
 	if params.AssignedToID != "" {
 		query.Set("assigned_to_id", params.AssignedToID)
+	}
+	if params.VersionID != "" {
+		query.Set("fixed_version_id", params.VersionID)
 	}
 	if params.Subject != "" {
 		// Use ~keyword for partial match (contains)
@@ -874,6 +884,11 @@ func (c *Client) ListTimeEntries(params ListTimeEntriesParams) ([]TimeEntry, int
 	}
 	if params.To != "" {
 		query.Set("to", params.To)
+	}
+	// If no date filter specified, use spent_on=* to get all entries
+	// (Redmine defaults to current month otherwise)
+	if params.From == "" && params.To == "" {
+		query.Set("spent_on", "*")
 	}
 	if params.Limit > 0 {
 		query.Set("limit", strconv.Itoa(params.Limit))
@@ -1464,4 +1479,238 @@ func (c *Client) UpdateProject(params UpdateProjectParams) error {
 		return fmt.Errorf("failed to update project (may require admin or project manager privileges): %w", err)
 	}
 	return nil
+}
+
+// ProjectFile represents a file in the project Files section
+type ProjectFile struct {
+	ID          int    `json:"id"`
+	Filename    string `json:"filename"`
+	Filesize    int    `json:"filesize"`
+	ContentType string `json:"content_type"`
+	Description string `json:"description"`
+	ContentURL  string `json:"content_url"`
+	Author      IDName `json:"author"`
+	CreatedOn   string `json:"created_on"`
+	Version     *IDName `json:"version,omitempty"`
+	Downloads   int    `json:"downloads"`
+	Digest      string `json:"digest"`
+}
+
+// ListProjectFiles returns all files for a project
+func (c *Client) ListProjectFiles(projectID int) ([]ProjectFile, error) {
+	path := fmt.Sprintf("/projects/%d/files.json", projectID)
+	data, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Files []ProjectFile `json:"files"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return resp.Files, nil
+}
+
+// CreateProjectFileParams are parameters for creating a project file
+type CreateProjectFileParams struct {
+	ProjectID   int
+	Token       string // Upload token from UploadFile
+	Filename    string // Optional: override filename
+	Description string // Optional: file description
+	VersionID   int    // Optional: associate with version
+}
+
+// CreateProjectFile creates a new file in the project Files section
+func (c *Client) CreateProjectFile(params CreateProjectFileParams) (*ProjectFile, error) {
+	fileData := map[string]any{
+		"token": params.Token,
+	}
+	if params.Filename != "" {
+		fileData["filename"] = params.Filename
+	}
+	if params.Description != "" {
+		fileData["description"] = params.Description
+	}
+	if params.VersionID > 0 {
+		fileData["version_id"] = params.VersionID
+	}
+
+	reqBody := map[string]any{
+		"file": fileData,
+	}
+
+	path := fmt.Sprintf("/projects/%d/files.json", params.ProjectID)
+	data, err := c.doRequest("POST", path, reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		File ProjectFile `json:"file"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp.File, nil
+}
+
+// DMSFFile represents a file in DMSF
+type DMSFFile struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Version     int    `json:"version"`
+	Size        int    `json:"size"`
+	ContentURL  string `json:"content_url"`
+}
+
+// DMSFUploadResponse is the response from DMSF upload
+type DMSFUploadResponse struct {
+	Upload struct {
+		Token string `json:"token"`
+	} `json:"upload"`
+}
+
+// DMSFUploadFile uploads a file to DMSF and returns a token
+func (c *Client) DMSFUploadFile(projectID int, filename string, content io.Reader) (string, error) {
+	// Read content
+	data, err := io.ReadAll(content)
+	if err != nil {
+		return "", fmt.Errorf("failed to read content: %w", err)
+	}
+
+	// Build URL with filename
+	path := fmt.Sprintf("/projects/%d/dmsf/upload.json?filename=%s", projectID, url.QueryEscape(filename))
+
+	// Make request with binary content
+	req, err := http.NewRequest("POST", c.baseURL+path, bytes.NewReader(data))
+	if err != nil {
+		return "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("X-Redmine-API-Key", c.apiKey)
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
+		return "", fmt.Errorf("DMSF upload failed (status %d): %s", resp.StatusCode, string(respBody))
+	}
+
+	var uploadResp DMSFUploadResponse
+	if err := json.Unmarshal(respBody, &uploadResp); err != nil {
+		return "", fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return uploadResp.Upload.Token, nil
+}
+
+// DMSFCommitParams are parameters for committing a file to DMSF
+type DMSFCommitParams struct {
+	ProjectID   int
+	Token       string
+	Filename    string
+	Title       string
+	Description string
+	Comment     string
+	FolderID    int // Optional: 0 means root folder
+}
+
+// DMSFCommitFile commits an uploaded file to DMSF
+func (c *Client) DMSFCommitFile(params DMSFCommitParams) (*DMSFFile, error) {
+	uploadedFile := map[string]any{
+		"name":  params.Filename,
+		"token": params.Token,
+	}
+	if params.Title != "" {
+		uploadedFile["title"] = params.Title
+	}
+	if params.Description != "" {
+		uploadedFile["description"] = params.Description
+	}
+	if params.Comment != "" {
+		uploadedFile["comment"] = params.Comment
+	}
+
+	attachments := map[string]any{
+		"uploaded_file": uploadedFile,
+	}
+	if params.FolderID > 0 {
+		attachments["folder_id"] = params.FolderID
+	}
+
+	reqBody := map[string]any{
+		"attachments": attachments,
+	}
+
+	path := fmt.Sprintf("/projects/%d/dmsf/commit.json", params.ProjectID)
+	data, err := c.doRequest("POST", path, reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Files []DMSFFile `json:"dmsf_files"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if len(resp.Files) == 0 {
+		return nil, fmt.Errorf("no file created in response")
+	}
+
+	return &resp.Files[0], nil
+}
+
+// DMSFCreateFileParams combines upload and commit for convenience
+type DMSFCreateFileParams struct {
+	ProjectID   int
+	Filename    string
+	Title       string
+	Description string
+	Comment     string
+	FolderID    int
+	Content     io.Reader
+}
+
+// DMSFCreateFile uploads and commits a file to DMSF in one call
+func (c *Client) DMSFCreateFile(params DMSFCreateFileParams) (*DMSFFile, error) {
+	// Step 1: Upload
+	token, err := c.DMSFUploadFile(params.ProjectID, params.Filename, params.Content)
+	if err != nil {
+		return nil, fmt.Errorf("upload failed: %w", err)
+	}
+
+	// Step 2: Commit
+	commitParams := DMSFCommitParams{
+		ProjectID:   params.ProjectID,
+		Token:       token,
+		Filename:    params.Filename,
+		Title:       params.Title,
+		Description: params.Description,
+		Comment:     params.Comment,
+		FolderID:    params.FolderID,
+	}
+
+	file, err := c.DMSFCommitFile(commitParams)
+	if err != nil {
+		return nil, fmt.Errorf("commit failed: %w", err)
+	}
+
+	return file, nil
 }

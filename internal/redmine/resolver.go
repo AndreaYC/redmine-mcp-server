@@ -514,3 +514,39 @@ func (r *Resolver) GetCustomFields() ([]CustomFieldDefinitionFull, error) {
 	}
 	return r.customFields, nil
 }
+
+// ResolveVersion resolves a version name or ID to a version ID within a project
+func (r *Resolver) ResolveVersion(nameOrID string, projectID int) (int, error) {
+	// Try parsing as ID first
+	if id, err := strconv.Atoi(nameOrID); err == nil {
+		return id, nil
+	}
+
+	// Fetch versions for the project
+	versions, err := r.client.ListVersions(projectID)
+	if err != nil {
+		return 0, fmt.Errorf("failed to list versions: %w", err)
+	}
+
+	query := strings.ToLower(nameOrID)
+	var matches []IDName
+
+	for _, v := range versions {
+		if strings.ToLower(v.Name) == query {
+			return v.ID, nil
+		}
+		if strings.Contains(strings.ToLower(v.Name), query) {
+			matches = append(matches, IDName{ID: v.ID, Name: v.Name})
+		}
+	}
+
+	if len(matches) == 1 {
+		return matches[0].ID, nil
+	}
+
+	if len(matches) > 1 {
+		return 0, &ResolveError{Type: "version", Query: nameOrID, Matches: matches}
+	}
+
+	return 0, &ResolveError{Type: "version", Query: nameOrID, NotFound: true}
+}

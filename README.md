@@ -124,6 +124,8 @@ Both authentication methods are supported:
 ### Reports
 - `reports_weekly` - Generate weekly report
 - `reports_standup` - Generate standup report
+- `reports_project_analysis` - Comprehensive project analysis (time tracking, issues, custom fields, trends)
+- `reports_projects_compare` - Compare multiple projects side by side
 
 ### Reference
 - `trackers_list` - List all trackers
@@ -131,6 +133,48 @@ Both authentication methods are supported:
 - `priorities_list` - List all issue priorities
 - `activities_list` - List time entry activities
 - `reference_workflow` - Show workflow transition rules
+
+## Project Analysis Reports
+
+### reports_project_analysis
+
+Generate comprehensive project analysis for resource planning and project retrospectives.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `project` | ✓ | Project name or ID |
+| `from` | | Start date (YYYY-MM-DD) |
+| `to` | | End date (YYYY-MM-DD) |
+| `issue_status` | | Filter: `all` (default), `open`, `closed` |
+| `version` | | Filter by version/milestone |
+| `custom_fields` | | Custom fields to analyze (comma-separated, default: all) |
+| `format` | | Output: `json` (default), `csv`, `excel` |
+| `attach_to` | | Save location: `dmsf`, `dmsf:FolderID`, `files`, `wiki`, `wiki:PageName`, `issue:123` |
+
+**Output includes:**
+- Summary: total hours, person days, contributors, issue counts
+- By Tracker: hours and issue count per tracker type
+- By User: hours per contributor
+- By Version: hours per milestone
+- By Custom Field: breakdown by Component, SW_Category, etc.
+- Monthly Trend: hours over time
+- Top Issues: most time-consuming issues
+
+### reports_projects_compare
+
+Compare multiple projects side by side for benchmarking.
+
+**Parameters:**
+| Parameter | Required | Description |
+|-----------|----------|-------------|
+| `projects` | ✓ | Project names/IDs (comma-separated) |
+| `from` | | Start date |
+| `to` | | End date |
+| `issue_status` | | Filter: `all`, `open`, `closed` |
+| `format` | | Output: `json`, `csv`, `excel` |
+| `attach_to` | | Save location: `dmsf`, `dmsf:FolderID`, `files`, `wiki`, `issue:123` |
+| `target_project` | | Project to save report (required with attach_to) |
 
 ## Name Resolution
 

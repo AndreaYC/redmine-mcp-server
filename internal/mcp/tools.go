@@ -745,6 +745,61 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Description("Date for the standup (YYYY-MM-DD, defaults to today)"),
 		),
 	), h.handleReportsStandup)
+
+	s.AddTool(mcp.NewTool("reports_project_analysis",
+		mcp.WithDescription("Generate comprehensive project analysis report with time tracking, issue statistics, and custom field breakdowns. Useful for project retrospectives and resource planning."),
+		mcp.WithString("project",
+			mcp.Required(),
+			mcp.Description("Project name or ID"),
+		),
+		mcp.WithString("from",
+			mcp.Description("Start date (YYYY-MM-DD)"),
+		),
+		mcp.WithString("to",
+			mcp.Description("End date (YYYY-MM-DD)"),
+		),
+		mcp.WithString("issue_status",
+			mcp.Description("Filter by issue status: 'all' (default), 'open', 'closed'"),
+		),
+		mcp.WithString("version",
+			mcp.Description("Filter by version/milestone name or ID"),
+		),
+		mcp.WithString("custom_fields",
+			mcp.Description("Custom fields to analyze (comma-separated). Default: all custom fields"),
+		),
+		mcp.WithString("format",
+			mcp.Description("Output format: 'json' (default), 'csv', 'excel'"),
+		),
+		mcp.WithString("attach_to",
+			mcp.Description("Where to save the report: 'dmsf' (DMSF plugin, recommended), 'dmsf:FolderID', 'files', 'wiki', 'issue:123'. If omitted, returns data directly (or base64 for excel)"),
+		),
+	), h.handleReportsProjectAnalysis)
+
+	s.AddTool(mcp.NewTool("reports_projects_compare",
+		mcp.WithDescription("Compare multiple projects side by side. Useful for resource planning and project benchmarking."),
+		mcp.WithString("projects",
+			mcp.Required(),
+			mcp.Description("Project names or IDs (comma-separated)"),
+		),
+		mcp.WithString("from",
+			mcp.Description("Start date (YYYY-MM-DD)"),
+		),
+		mcp.WithString("to",
+			mcp.Description("End date (YYYY-MM-DD)"),
+		),
+		mcp.WithString("issue_status",
+			mcp.Description("Filter by issue status: 'all' (default), 'open', 'closed'"),
+		),
+		mcp.WithString("format",
+			mcp.Description("Output format: 'json' (default), 'csv', 'excel'"),
+		),
+		mcp.WithString("attach_to",
+			mcp.Description("Where to save the report: 'dmsf' (DMSF plugin, recommended), 'dmsf:FolderID', 'files', 'wiki', 'issue:123'"),
+		),
+		mcp.WithString("target_project",
+			mcp.Description("Project to save the report to (required when attach_to is specified)"),
+		),
+	), h.handleReportsProjectsCompare)
 }
 
 // McpServer interface for registering tools
@@ -3357,4 +3412,208 @@ func parseUploadTokens(tokens []any) ([]redmine.UploadToken, error) {
 		uploads = append(uploads, u)
 	}
 	return uploads, nil
+}
+
+func (h *ToolHandlers) handleReportsProjectAnalysis(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projectStr, err := req.RequireString("project")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectID, err := h.resolver.ResolveProject(projectStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+	}
+
+	// Get project details
+	project, err := h.client.GetProjectDetail(projectID, nil)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to get project: %v", err)), nil
+	}
+
+	// Parse custom_fields parameter
+	var customFields []string
+	if cfStr := req.GetString("custom_fields", ""); cfStr != "" {
+		for _, cf := range strings.Split(cfStr, ",") {
+			customFields = append(customFields, strings.TrimSpace(cf))
+		}
+	}
+
+	params := ProjectAnalysisParams{
+		ProjectID:    projectID,
+		ProjectName:  project.Name,
+		From:         req.GetString("from", ""),
+		To:           req.GetString("to", ""),
+		IssueStatus:  req.GetString("issue_status", "all"),
+		Version:      req.GetString("version", ""),
+		CustomFields: customFields,
+		Format:       req.GetString("format", "json"),
+		AttachTo:     req.GetString("attach_to", ""),
+	}
+
+	// Generate report
+	rg := NewReportGenerator(h.client, h.resolver)
+	result, err := rg.GenerateProjectAnalysis(params)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to generate analysis: %v", err)), nil
+	}
+
+	// Handle output format
+	switch params.Format {
+	case "csv":
+		csv := rg.GenerateCSV(result)
+		if params.AttachTo != "" {
+			filename := fmt.Sprintf("%s_analysis_%s.csv", project.Identifier, time.Now().Format("20060102"))
+			url, err := rg.AttachResult([]byte(csv), filename, params)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to attach report: %v", err)), nil
+			}
+			result.DownloadURL = url
+			return jsonResult(result)
+		}
+		return mcp.NewToolResultText(csv), nil
+
+	case "excel":
+		excelData, err := rg.GenerateExcel(result)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to generate Excel: %v", err)), nil
+		}
+		filename := fmt.Sprintf("%s_analysis_%s.xlsx", project.Identifier, time.Now().Format("20060102"))
+		if params.AttachTo != "" {
+			url, err := rg.AttachResult(excelData, filename, params)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to attach report: %v", err)), nil
+			}
+			result.DownloadURL = url
+			return jsonResult(result)
+		}
+		// Return base64 encoded Excel
+		return jsonResult(map[string]any{
+			"filename": filename,
+			"content":  ToBase64(excelData),
+			"format":   "base64",
+			"summary":  result.Summary,
+		})
+
+	default: // json
+		return jsonResult(result)
+	}
+}
+
+func (h *ToolHandlers) handleReportsProjectsCompare(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projectsStr, err := req.RequireString("projects")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	// Parse project list
+	projectNames := strings.Split(projectsStr, ",")
+	if len(projectNames) < 2 {
+		return mcp.NewToolResultError("At least 2 projects required for comparison"), nil
+	}
+
+	var projects []struct {
+		ID   int
+		Name string
+	}
+
+	for _, name := range projectNames {
+		name = strings.TrimSpace(name)
+		projectID, err := h.resolver.ResolveProject(name)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project '%s': %v", name, err)), nil
+		}
+		project, err := h.client.GetProjectDetail(projectID, nil)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to get project '%s': %v", name, err)), nil
+		}
+		projects = append(projects, struct {
+			ID   int
+			Name string
+		}{ID: projectID, Name: project.Name})
+	}
+
+	issueStatus := req.GetString("issue_status", "all")
+	from := req.GetString("from", "")
+	to := req.GetString("to", "")
+	format := req.GetString("format", "json")
+	attachTo := req.GetString("attach_to", "")
+
+	// Handle target_project for attach_to
+	var targetProjectID int
+	if attachTo != "" {
+		targetProjectStr := req.GetString("target_project", "")
+		if targetProjectStr == "" {
+			return mcp.NewToolResultError("target_project is required when attach_to is specified"), nil
+		}
+		targetProjectID, err = h.resolver.ResolveProject(targetProjectStr)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve target_project: %v", err)), nil
+		}
+	}
+
+	// Generate analysis for each project
+	rg := NewReportGenerator(h.client, h.resolver)
+	var projectResults []map[string]any
+
+	for _, p := range projects {
+		params := ProjectAnalysisParams{
+			ProjectID:   p.ID,
+			ProjectName: p.Name,
+			From:        from,
+			To:          to,
+			IssueStatus: issueStatus,
+		}
+
+		result, err := rg.GenerateProjectAnalysis(params)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to analyze project '%s': %v", p.Name, err)), nil
+		}
+
+		projectResults = append(projectResults, map[string]any{
+			"project":          result.Project,
+			"summary":          result.Summary,
+			"by_tracker":       result.ByTracker,
+			"by_custom_field":  result.ByCustomField,
+			"monthly_trend":    result.MonthlyTrend,
+		})
+	}
+
+	compareResult := map[string]any{
+		"projects": projectResults,
+	}
+	if from != "" || to != "" {
+		compareResult["period"] = fmt.Sprintf("%s ~ %s", from, to)
+	}
+
+	// Handle output format
+	switch format {
+	case "excel":
+		excelData, err := rg.GenerateComparisonExcel(projectResults)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to generate Excel: %v", err)), nil
+		}
+		filename := fmt.Sprintf("projects_comparison_%s.xlsx", time.Now().Format("20060102"))
+		if attachTo != "" {
+			attachParams := ProjectAnalysisParams{
+				ProjectID: targetProjectID,
+				AttachTo:  attachTo,
+			}
+			url, err := rg.AttachResult(excelData, filename, attachParams)
+			if err != nil {
+				return mcp.NewToolResultError(fmt.Sprintf("Failed to attach report: %v", err)), nil
+			}
+			compareResult["download_url"] = url
+			return jsonResult(compareResult)
+		}
+		return jsonResult(map[string]any{
+			"filename": filename,
+			"content":  ToBase64(excelData),
+			"format":   "base64",
+			"projects": projectResults,
+		})
+
+	default: // json
+		return jsonResult(compareResult)
+	}
 }

@@ -1,9 +1,6 @@
-FROM golang:1.23-alpine AS builder
+FROM golang:1.24-bookworm AS builder
 
 WORKDIR /app
-
-# Install git for go mod download
-RUN apk add --no-cache git
 
 # Copy go mod files first for better caching
 COPY go.mod go.sum ./
