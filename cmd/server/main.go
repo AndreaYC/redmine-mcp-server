@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/ycho/redmine-mcp-server/internal/api"
 	"github.com/ycho/redmine-mcp-server/internal/mcp"
+	"github.com/ycho/redmine-mcp-server/internal/redmine"
 )
 
 var (
@@ -57,7 +59,23 @@ func main() {
 		RunE:  runAPI,
 	}
 
-	rootCmd.AddCommand(mcpCmd, apiCmd)
+	// generate-rules command
+	var (
+		outputFile string
+		mergeMode  bool
+	)
+	genRulesCmd := &cobra.Command{
+		Use:   "generate-rules",
+		Short: "Generate custom field rules from Redmine admin API",
+		Long:  "Query /custom_fields.json (requires admin API key) and generate custom_field_rules.json",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return runGenerateRules(outputFile, mergeMode)
+		},
+	}
+	genRulesCmd.Flags().StringVarP(&outputFile, "output", "o", "", "Output file (default: stdout)")
+	genRulesCmd.Flags().BoolVar(&mergeMode, "merge", false, "Merge with existing file instead of overwriting")
+
+	rootCmd.AddCommand(mcpCmd, apiCmd, genRulesCmd)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
@@ -106,6 +124,54 @@ func runMCP(cmd *cobra.Command, args []string) error {
 
 	server := mcp.NewServer(config)
 	return server.Run()
+}
+
+func runGenerateRules(outputFile string, mergeMode bool) error {
+	if redmineURL == "" {
+		return fmt.Errorf("REDMINE_URL is required (set via --redmine-url or REDMINE_URL env var)")
+	}
+	apiKey := os.Getenv("REDMINE_API_KEY")
+	if apiKey == "" {
+		return fmt.Errorf("REDMINE_API_KEY is required (admin key needed for /custom_fields.json)")
+	}
+
+	client := redmine.NewClient(redmineURL, apiKey)
+	fields, err := client.ListAllCustomFields()
+	if err != nil {
+		return fmt.Errorf("failed to fetch custom fields: %w", err)
+	}
+
+	generated := redmine.GenerateCustomFieldRules(fields)
+	slog.Info("generated rules from API", "fields", len(generated.Fields))
+
+	result := generated
+	if mergeMode && outputFile != "" {
+		existing, err := redmine.LoadCustomFieldRules(outputFile)
+		if err != nil {
+			return fmt.Errorf("failed to load existing rules for merge: %w", err)
+		}
+		if existing != nil {
+			existing.Merge(generated)
+			result = existing
+			slog.Info("merged with existing file", "total_fields", len(result.Fields))
+		}
+	}
+
+	data, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal rules: %w", err)
+	}
+
+	if outputFile != "" {
+		if err := os.WriteFile(outputFile, append(data, '\n'), 0644); err != nil {
+			return fmt.Errorf("failed to write file: %w", err)
+		}
+		slog.Info("wrote rules", "file", outputFile, "fields", len(result.Fields))
+	} else {
+		fmt.Println(string(data))
+	}
+
+	return nil
 }
 
 func runAPI(cmd *cobra.Command, args []string) error {

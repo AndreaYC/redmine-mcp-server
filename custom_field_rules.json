@@ -1,8 +1,679 @@
 {
   "fields": {
+    "106": {
+      "name": "Smoke_ID",
+      "values": null
+    },
+    "107": {
+      "name": "Sub_Feature_State",
+      "values": [
+        "Need Study in every platform",
+        "No error happened in recent 2 years",
+        "Always Fault"
+      ]
+    },
+    "108": {
+      "name": "Estimated exec. (Hours)",
+      "values": null
+    },
+    "109": {
+      "name": "Test Prority",
+      "values": [
+        "P1.1",
+        "P1.2",
+        "P1.3",
+        "P2",
+        "P3"
+      ]
+    },
+    "110": {
+      "name": "PRD",
+      "values": [
+        "1",
+        "0"
+      ]
+    },
+    "111": {
+      "name": "Target Date",
+      "values": null
+    },
+    "112": {
+      "name": "Sub Component Version",
+      "values": null
+    },
+    "113": {
+      "name": "iDesign_Req_ID",
+      "values": null
+    },
+    "114": {
+      "name": "keywords_i",
+      "values": null
+    },
+    "115": {
+      "name": "BG",
+      "values": null
+    },
+    "116": {
+      "name": "PM Name",
+      "values": null
+    },
+    "117": {
+      "name": "Related ECPO Number",
+      "values": null
+    },
+    "12": {
+      "name": "Solution(Root cause)",
+      "values": [
+        "New Issue",
+        "On Going",
+        "Done / Fixed",
+        "Not relate to HW/FW or our SW",
+        "No plan to fix",
+        "Limitation (HW, chipset or SW limitation)",
+        "Duplication",
+        "Known Issue",
+        "Not Reproducible",
+        "Third Party issue",
+        "Invalid Bug",
+        "Workaround"
+      ]
+    },
+    "121": {
+      "name": "Product Line",
+      "values": null
+    },
+    "122": {
+      "name": "Reservation(Y2 P/N)",
+      "values": null
+    },
+    "126": {
+      "name": "Bug Create After MP",
+      "values": [
+        "1",
+        "0"
+      ],
+      "required_by_trackers": [
+        4
+      ]
+    },
+    "127": {
+      "name": "ECLB Number",
+      "values": null
+    },
+    "128": {
+      "name": "Part Number",
+      "values": null
+    },
+    "129": {
+      "name": "Deadline to Provide",
+      "values": null
+    },
+    "13": {
+      "name": "Reproducible",
+      "values": [
+        "Unknown",
+        "Always",
+        "Often",
+        "Seldom(25%-)",
+        "Once",
+        "Unable to reproduce",
+        "N/A"
+      ],
+      "required_by_trackers": [
+        4,
+        18
+      ]
+    },
+    "130": {
+      "name": "Last Ship Date",
+      "values": null
+    },
+    "131": {
+      "name": "Last Buy Date",
+      "values": null
+    },
+    "132": {
+      "name": "PO Number",
+      "values": null
+    },
+    "133": {
+      "name": "Total Amount",
+      "values": null
+    },
+    "134": {
+      "name": "Forecast Demand",
+      "values": null
+    },
+    "135": {
+      "name": "Description Attachment File_1",
+      "values": null
+    },
+    "136": {
+      "name": "Attachment Link_1",
+      "values": null
+    },
+    "137": {
+      "name": "Attachment Link_2",
+      "values": null
+    },
+    "138": {
+      "name": "Description Attachment File_2",
+      "values": null
+    },
+    "139": {
+      "name": "Description Attachment File_3",
+      "values": null
+    },
+    "140": {
+      "name": "Material Type",
+      "values": [
+        "ZPER(Peripheral)",
+        "Non-ZPER(EE/ME)"
+      ]
+    },
+    "141": {
+      "name": "Attachment Link_3",
+      "values": null
+    },
+    "142": {
+      "name": "ECPO/ECNR Number",
+      "values": null
+    },
+    "143": {
+      "name": "Change Type",
+      "values": [
+        "Phase Out \u0026 Last Time Buy",
+        "Phase Out",
+        "Phase Out-Past due",
+        "Phase Out for standardization",
+        "Discard",
+        "Inactive",
+        "Other"
+      ]
+    },
+    "144": {
+      "name": "Related ADV. P/N",
+      "values": null
+    },
+    "145": {
+      "name": "Related MPN",
+      "values": null
+    },
+    "146": {
+      "name": "Manufacturer",
+      "values": null
+    },
+    "147": {
+      "name": "PLM_ ECPO/ECNR_Link",
+      "values": null
+    },
+    "148": {
+      "name": "Requester",
+      "values": [
+        "Vendor",
+        "CE",
+        "PUR",
+        "Policy",
+        "Other"
+      ]
+    },
+    "149": {
+      "name": "EOL Letter received date",
+      "values": null
+    },
     "15": {
       "name": "FW Version",
-      "required_by_trackers": [4, 18]
+      "values": null,
+      "required_by_trackers": [
+        4,
+        18,
+        21
+      ]
+    },
+    "150": {
+      "name": "Suggest replaced by",
+      "values": null
+    },
+    "151": {
+      "name": "Reason type",
+      "values": [
+        "1-A停產(廠商倒閉), Phase out(Vender collapse)",
+        "1-B停產(廠商因不符經濟效益而不再生產), Phase out(Without economic)",
+        "1-C停產(但研華無Where Use), Phase out(Without where use)",
+        "1-D改版(設計變更), Version change(Design change)",
+        "1-E改版(製程變更), Version change(Process change)",
+        "1-F改版(材質變更), Version change(Material change)",
+        "1-G不建議用料(廠商不建議續用), Not recommend for new design(Vender Not recommend)",
+        "1-H不建議用料(LT或MOQ問題), Not recommend for new design(L/T, MOQ issue)",
+        "2-A禁用料(不符合研華規範), Not recommend for new design(Does not meet Advantech norms)",
+        "2-B禁用料(品質有問題), Not recommend for new design(Quality issue)",
+        "2-C一物二號, Same component for two part number",
+        "2-D料號申請有誤, Part number error",
+        "2-E不再使用, Not to use",
+        "2-F公司政策, Company Policy",
+        "1-A不建議用料(廠商不建議續用), Not recommend for new design(Vender Not recommend)",
+        "1-B不建議用料(LT或MOQ問題), Not recommend for new design(L/T, MOQ issue)",
+        "1-C公司政策, Company Policy",
+        "2-A一物二號, Same component for two part number",
+        "2-B原NRND(CE), NRND in CIS",
+        "2-C改版(設計變更),Version change(Design change)",
+        "3-A料號2年清理,後續不建議使用,Part number cleansing for 2 years not use"
+      ]
+    },
+    "152": {
+      "name": "Remark",
+      "values": null
+    },
+    "154": {
+      "name": "NPI Phase",
+      "values": [
+        "Plan",
+        "EVT",
+        "DVT",
+        "PVT",
+        "MP",
+        "RFQ",
+        "Pending",
+        "Cancel",
+        "OutSourcing",
+        "SRP-Plan",
+        "SRP-Design and Verification",
+        "SRP-Delivery",
+        ""
+      ]
+    },
+    "155": {
+      "name": "Requirement PD",
+      "values": [
+        "Cloud-IoT(NCG)--IBD(CN)",
+        "Cloud-IoT(NCG)--Medical Image \u0026 Applied VI",
+        "Cloud-IoT(NCG)--VI \u0026 AI Platform",
+        "Cloud-IoT(NCG)--Network Switch",
+        "Cloud-IoT(NCG)--IP Video \u0026 Broadcasting",
+        "Cloud-IoT(NCG)--Industrial Server",
+        "Cloud-IoT(NCG)--Industrial Blade Division (IBD)",
+        "Cloud-IoT(NCG)--ENPD",
+        "CIoT--Industrial Server",
+        "CIoT--Embedded \u0026 Medical Video",
+        "CIoT--IP Video Card",
+        "CIoT--ENPD",
+        "Video Solution--Video KA \u0026 DMS",
+        "CIoT--ENPD(CN)",
+        "CIoT--Industrial Servers",
+        "CIoT-ENPD",
+        "CIoT-Industrial Servers",
+        "CIoT--Cloud Infrastructure Platform",
+        "CIoT-Cloud Infrastructure Platform",
+        "Video Solution-Embedded \u0026 Medical Video",
+        "Video Solution-Intelligent Vision",
+        "CIoT-ENPD(CN)",
+        "CIoT--SKY Server",
+        "Video Solution-Video AI",
+        "CIoT-WISE-CIoT",
+        "VSG-Video KA \u0026 DMS",
+        "VSG-Video AI",
+        "CIoT-SKY Server",
+        "VSG-Video Card \u0026 Appliance",
+        "Video Platform \u0026 DMS"
+      ]
+    },
+    "156": {
+      "name": "Model name",
+      "values": null
+    },
+    "157": {
+      "name": "TASK_UID",
+      "values": null
+    },
+    "158": {
+      "name": "Task_ID",
+      "values": null
+    },
+    "16": {
+      "name": "Error Type",
+      "values": [
+        "N/A",
+        "Coding/Implementation error",
+        "Insufficient/Missing requirement",
+        "Insufficient/Missing SW design",
+        "Missing implementation/coding",
+        "Missing understanding of requirement",
+        "Poor document writing",
+        "SW correction side effects",
+        "Test plan/cases error",
+        "Error in SW tools",
+        "Feature not support",
+        "Duplicated",
+        "HW related problem",
+        "3rd Party problem",
+        "Feature Request",
+        "User Error",
+        "Test environment failure",
+        "Others"
+      ]
+    },
+    "172": {
+      "name": "iDesign_BugUID",
+      "values": null
+    },
+    "173": {
+      "name": "ECN/PCN Number",
+      "values": null
+    },
+    "174": {
+      "name": "ECN/PCN file",
+      "values": null
+    },
+    "175": {
+      "name": "Date of Publication",
+      "values": null
+    },
+    "176": {
+      "name": "Affected Component Part Number",
+      "values": null
+    },
+    "177": {
+      "name": "Suggested Actions",
+      "values": [
+        "R\u0026D test \u0026 validation (Please feedback your request if test samples are needed.)",
+        "Production evaluation \u0026 adjustment",
+        "No impact, but if PD would like to get samples to conduct test \u0026 validation, please feedback your request within 3 business days.",
+        "No impact on the form, fit, and function of the component itself but IQC should pay attention to the change",
+        "No impact",
+        "Others: (Please specify in the following field – “Other Actions”)"
+      ]
+    },
+    "178": {
+      "name": "Other Actions",
+      "values": null
+    },
+    "179": {
+      "name": "Key Characteristics of Change",
+      "values": null
+    },
+    "180": {
+      "name": "Affected Product Part Numbers",
+      "values": null
+    },
+    "181": {
+      "name": "Where Used File",
+      "values": null
+    },
+    "182": {
+      "name": "Cut-in Time for the Change",
+      "values": [
+        "Immediate",
+        "By Date",
+        "By Date Code",
+        "By Others"
+      ]
+    },
+    "183": {
+      "name": "Cut-in Date",
+      "values": null
+    },
+    "184": {
+      "name": "Cut-in Others",
+      "values": null
+    },
+    "185": {
+      "name": "Impact Level",
+      "values": [
+        "Critical",
+        "Major",
+        "Minor"
+      ]
+    },
+    "186": {
+      "name": "Product Name",
+      "values": null
+    },
+    "187": {
+      "name": "Semi Product Number",
+      "values": null
+    },
+    "188": {
+      "name": "Second Source Number",
+      "values": null
+    },
+    "189": {
+      "name": "PD",
+      "values": null
+    },
+    "190": {
+      "name": "Cut-in Date Code",
+      "values": null
+    },
+    "191": {
+      "name": "Action Plan",
+      "values": [
+        "Keep",
+        "Modified",
+        "No Go"
+      ]
+    },
+    "194": {
+      "name": "Test Case Review Status",
+      "values": [
+        "New",
+        "Designing",
+        "Reviewed finished and need actions",
+        "Reviewed finished",
+        "Complete"
+      ],
+      "required_by_trackers": [
+        19
+      ]
+    },
+    "195": {
+      "name": "Need R\u0026D Explian",
+      "values": [
+        "1",
+        "0"
+      ],
+      "required_by_trackers": [
+        19
+      ]
+    },
+    "198": {
+      "name": "TSU_Common_Issue",
+      "values": [
+        "1",
+        "0"
+      ]
+    },
+    "199": {
+      "name": "TSU_Common_Issue2",
+      "values": [
+        "1",
+        "0"
+      ]
+    },
+    "200": {
+      "name": "BU_i",
+      "values": null
+    },
+    "201": {
+      "name": "PD_i",
+      "values": null
+    },
+    "202": {
+      "name": "Platform_i",
+      "values": null
+    },
+    "203": {
+      "name": "MGRMail_i",
+      "values": null
+    },
+    "204": {
+      "name": "Project_Controller_i",
+      "values": null
+    },
+    "205": {
+      "name": "Test_team_leader_i",
+      "values": null
+    },
+    "206": {
+      "name": "Related EPO Number",
+      "values": null
+    },
+    "207": {
+      "name": "Announcement Date",
+      "values": null
+    },
+    "209": {
+      "name": "PLM_ ECPO/ECNR_Number",
+      "values": null
+    },
+    "210": {
+      "name": "BIOS",
+      "values": null
+    },
+    "211": {
+      "name": "TSU issue type",
+      "values": [
+        "BIOS--Function",
+        "BIOS--Platform",
+        "FW--Function",
+        "HW--Function",
+        "HW--Platform",
+        "SW--Platform--Driver",
+        "SW--Platform--OS"
+      ]
+    },
+    "212": {
+      "name": "Problem Description",
+      "values": null
+    },
+    "213": {
+      "name": "Problem Analysis",
+      "values": null
+    },
+    "214": {
+      "name": "Conclusion",
+      "values": null
+    },
+    "215": {
+      "name": "Source Redmine",
+      "values": null
+    },
+    "216": {
+      "name": "unit",
+      "values": null
+    },
+    "217": {
+      "name": "Issue_Type",
+      "values": [
+        "BIOS",
+        "DROP",
+        "FW",
+        "HW",
+        "Lab-Pre Test-Safety",
+        "Lab-Pre Test-Other",
+        "Lab-Certificate-EMC",
+        "Lab-Free Fail",
+        "Lab-Other",
+        "Lab-Pre Test-EMS",
+        "Lab-Pre Test-EMI",
+        "Lab-Certificate-Safety",
+        "Lab-Temperature/Humidity",
+        "Lab-Vibration/Shock/Bump",
+        "ME",
+        "Signal Analysis",
+        "SW-Boot Loader",
+        "SW-Application",
+        "SW-Components",
+        "SW-Driver",
+        "SW-Kernel",
+        "Lab-Thermal",
+        "Lab-Power ON/OFF test",
+        "PM",
+        "Factory",
+        "Measurement",
+        "Counterparty",
+        "Mechanism",
+        "EC",
+        "DFM_Check",
+        "SPE",
+        "IPMI",
+        "FPGA",
+        "Power",
+        "SW-OS image"
+      ]
+    },
+    "218": {
+      "name": "Bug_ID",
+      "values": null
+    },
+    "219": {
+      "name": "Bug_Name",
+      "values": null
+    },
+    "220": {
+      "name": "Bug_Link",
+      "values": null
+    },
+    "221": {
+      "name": "NPI_BIOS",
+      "values": [
+        "Pre-Study",
+        "NPI",
+        "Maintenance",
+        "Customization",
+        "Others"
+      ],
+      "required_by_trackers": [
+        23
+      ]
+    },
+    "222": {
+      "name": "PD_Allocation",
+      "values": [
+        "CIP",
+        "SKY Server",
+        "ENPD",
+        "Video Platform \u0026 DMS",
+        "Others"
+      ],
+      "required_by_trackers": [
+        23
+      ]
+    },
+    "223": {
+      "name": "SW_Category",
+      "values": [
+        "Planning(Pre-study \u0026 CRB evaluation \u0026 GID preparation)",
+        "Schematic review",
+        "Bring up",
+        "Implement (Design \u0026 Validation)",
+        "Document writing",
+        "Debug",
+        "Customize",
+        "Internal support",
+        "Customer support",
+        "MFG",
+        "Maintain",
+        "Other"
+      ],
+      "required_by_trackers": [
+        32
+      ]
+    },
+    "226": {
+      "name": "PCB No",
+      "values": null
+    },
+    "227": {
+      "name": "EE Second Line",
+      "values": null
+    },
+    "228": {
+      "name": "PM Second Line",
+      "values": null
+    },
+    "229": {
+      "name": "Task Comment",
+      "values": null
     },
     "23": {
       "name": "Component",
@@ -29,9 +700,9 @@
         "FW",
         "Unknown",
         "3rd Party",
-        "Platform w/ OS Compatibility",
+        "Platform w/ OS  Compatibility",
         "BMC",
-        "Test Fixture & Environment",
+        "Test Fixture \u0026 Environment",
         "Thermal",
         "Chipset/Chip Vendor",
         "Other",
@@ -39,11 +710,42 @@
         "TPL"
       ]
     },
+    "230": {
+      "name": "ECLB_ Where use Product Name",
+      "values": null
+    },
+    "231": {
+      "name": "Functionality Affected",
+      "values": null
+    },
+    "232": {
+      "name": "Vendor Ticket ID",
+      "values": null
+    },
+    "24": {
+      "name": "Bug Classification",
+      "values": [
+        "Algorithmic Anomaly",
+        "Blunder, Botch",
+        "Cleanup for Consistency",
+        "Datastructure Debacle",
+        "Efficiency Enhancement",
+        "Forgotten Functions",
+        "Generalization, Growth",
+        "Interactive Improvement",
+        "Language Liability",
+        "Mismatch between Modules",
+        "Promotion of Portability",
+        "Quest for Quality",
+        "Reinforced Robustness",
+        "Surprising Scenario",
+        "Trivial Typo"
+      ]
+    },
     "26": {
       "name": "Issue Finder",
-      "required_by_trackers": [4, 18],
       "values": [
-        "FW&SW RD",
+        "FW\u0026SW RD",
         "EE",
         "ATCA-SI",
         "DQA",
@@ -60,58 +762,377 @@
         "Factory",
         "Other",
         "Common Issue"
+      ],
+      "required_by_trackers": [
+        4,
+        18
       ]
     },
     "27": {
       "name": "HW Version",
-      "required_by_trackers": [4, 22]
+      "values": null,
+      "required_by_trackers": [
+        4,
+        21,
+        22
+      ]
     },
-    "126": {
-      "name": "Bug Create After MP",
-      "required_by_trackers": [4],
+    "32": {
+      "name": "Fix_Reject_Counts",
+      "values": [
+        "0",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ]
+    },
+    "36": {
+      "name": "iDesign_BugID",
+      "values": null
+    },
+    "37": {
+      "name": "iDesign_BugLink",
+      "values": null
+    },
+    "38": {
+      "name": "Test Case",
+      "values": null
+    },
+    "39": {
+      "name": "R\u0026D Solution for fix",
+      "values": null
+    },
+    "4": {
+      "name": "Severity",
+      "values": [
+        "Minor",
+        "Major",
+        "Critical",
+        "Low/Cosmetically"
+      ],
+      "required_by_trackers": [
+        4,
+        18,
+        21,
+        22,
+        28,
+        37,
+        45,
+        46
+      ]
+    },
+    "40": {
+      "name": "Req.ID",
+      "values": null
+    },
+    "41": {
+      "name": "NPIPhase_i",
+      "values": null
+    },
+    "42": {
+      "name": "PCB_PartNO_i",
+      "values": null
+    },
+    "43": {
+      "name": "Product_type_i",
+      "values": null
+    },
+    "44": {
+      "name": "Product_Name_i",
+      "values": null
+    },
+    "45": {
+      "name": "PCB_Name_i",
+      "values": null
+    },
+    "46": {
+      "name": "PCB_version_i",
+      "values": null
+    },
+    "58": {
+      "name": "Category",
+      "values": [
+        "HW",
+        "FPGA",
+        "BMC",
+        "BIOS",
+        "Operating System",
+        "SW Tool",
+        "EC",
+        "Unknown",
+        "3rd Party",
+        "Test",
+        "document/process",
+        "Network",
+        "Thermal",
+        "TSE",
+        "IPMI"
+      ]
+    },
+    "59": {
+      "name": "Compliancy",
+      "values": [
+        "Fully",
+        "Partially",
+        "Not",
+        "Not applicable"
+      ]
+    },
+    "60": {
+      "name": "fillform_i",
+      "values": null
+    },
+    "61": {
+      "name": "TestItemName_i",
+      "values": null
+    },
+    "62": {
+      "name": "test_item_i",
+      "values": null
+    },
+    "63": {
+      "name": "Assign_to_i",
+      "values": null
+    },
+    "64": {
+      "name": "iDesignRequestID_i",
+      "values": null
+    },
+    "66": {
+      "name": "Validated  in eSW Package",
+      "values": [
+        "Not Yet",
+        "N/A",
+        "Before 1.1",
+        "1.1",
+        "1.2",
+        "2.0",
+        "2.1",
+        "3.0",
+        "3.1",
+        "3.2",
+        "3.4",
+        "4.0",
+        "4.1",
+        "5.0",
+        "5.1",
+        "6.0",
+        "7.0"
+      ],
+      "required_by_trackers": [
+        1
+      ]
+    },
+    "67": {
+      "name": "Test Result",
+      "values": [
+        "Not Yet",
+        "Pass",
+        "Fail",
+        "Blocked",
+        "Not Compliant",
+        "Requirement remove",
+        "No test case needed",
+        "conditionally Pass",
+        "PASS, customer check done",
+        "Requirement No Go,result is only for reference.",
+        "Please refer the other test report.",
+        "Please refer the other test specification.",
+        "Documentation only."
+      ]
+    },
+    "69": {
+      "name": "Test Case ID",
+      "values": null
+    },
+    "70": {
+      "name": "Customer Issue ID",
+      "values": null
+    },
+    "72": {
+      "name": "Reproducible(%)",
+      "values": [
+        "100%",
+        "up90%",
+        "80%~90%",
+        "70%~80%",
+        "60%~70%",
+        "50%~60%",
+        "40%~50%",
+        "30%~40%",
+        "20%~30%",
+        "10%~20%",
+        "0%~10%"
+      ]
+    },
+    "73": {
+      "name": "Virtual Zero PRONTO (Y/N)",
       "values": [
         "1",
         "0"
       ]
     },
-    "221": {
-      "name": "NPI_BIOS",
-      "required_by_trackers": [23],
-      "values": [
-        "Pre-Study",
-        "NPI",
-        "Maintenance",
-        "Customization",
-        "Others"
-      ]
+    "74": {
+      "name": "Result Note",
+      "values": null
     },
-    "222": {
-      "name": "PD_Allocation",
-      "required_by_trackers": [23],
-      "values": [
-        "CIP",
-        "SKY Server",
-        "ENPD",
-        "Video Platform & DMS",
-        "Others"
-      ]
+    "75": {
+      "name": "Gordon Link",
+      "values": null
     },
-    "223": {
-      "name": "SW_Category",
-      "required_by_trackers": [32],
+    "76": {
+      "name": "EE2_Category",
       "values": [
-        "Planning(Pre-study & CRB evaluation & GID preparation)",
-        "Schematic review",
-        "Bring up",
-        "Implement (Design & Validation)",
-        "Document writing",
+        "RFQ/RFI",
+        "Feasibility Study",
+        "Planning",
+        "Study",
+        "Design",
         "Debug",
-        "Customize",
-        "Internal support",
-        "Customer support",
-        "MFG",
+        "Layout Check",
+        "Schematic",
         "Maintain",
+        "Validation",
+        "Support",
         "Other"
+      ],
+      "required_by_trackers": [
+        28,
+        45
+      ]
+    },
+    "77": {
+      "name": "NPI_Phase",
+      "values": [
+        "Planning",
+        "KICK-OFF",
+        "EVT",
+        "DVT",
+        "PVT",
+        "MP",
+        "Customize",
+        "non-NPI"
+      ],
+      "required_by_trackers": [
+        22,
+        24,
+        25,
+        26,
+        28,
+        29,
+        34,
+        45,
+        46
+      ]
+    },
+    "78": {
+      "name": "Platform Type(System)",
+      "values": null
+    },
+    "79": {
+      "name": "Project Name (Task)",
+      "values": null
+    },
+    "80": {
+      "name": "TekTag",
+      "values": null
+    },
+    "81": {
+      "name": "ME Bug Category",
+      "values": [
+        "PM/EE",
+        "Customer",
+        "Issue",
+        "ME bug",
+        "ME improvement",
+        "ADV factory",
+        "Vendor"
+      ]
+    },
+    "82": {
+      "name": "Target Date(Milestone)",
+      "values": null
+    },
+    "83": {
+      "name": "Action Item",
+      "values": [
+        "Need discuss test method in DQA internal meeting",
+        "Need Modify the Golden Plan",
+        "Need confirm w/ R\u0026D more detail about the feature description"
+      ]
+    },
+    "85": {
+      "name": "Project",
+      "values": [
+        "undefined",
+        "MIC-5345",
+        "MIC-5342",
+        "ACPI6",
+        "PAC-4010",
+        "PAC-9006",
+        "PAC-3004",
+        "SKY-8101",
+        "FWA-6170",
+        "Organisation",
+        "Team Management"
+      ]
+    },
+    "90": {
+      "name": "AE Task",
+      "values": [
+        "RMA",
+        "Inquiry",
+        "Validation",
+        "Duplication",
+        "Performance",
+        "Compatibility",
+        "Factory",
+        "ES Support",
+        "Document"
+      ]
+    },
+    "91": {
+      "name": "Region",
+      "values": [
+        "ACN",
+        "ABJ",
+        "ASH",
+        "ACD",
+        "AXA",
+        "AASC",
+        "AEU",
+        "AIN",
+        "AJP",
+        "AKR",
+        "ATW",
+        "ABR"
+      ]
+    },
+    "94": {
+      "name": "R\u0026D discuss feature finished",
+      "values": [
+        "1",
+        "0"
+      ]
+    },
+    "97": {
+      "name": "PM",
+      "values": null
+    },
+    "98": {
+      "name": "Customer ",
+      "values": null
+    },
+    "99": {
+      "name": "Group_ME",
+      "values": [
+        "ME1",
+        "ME2",
+        "A+TC"
       ]
     }
   }

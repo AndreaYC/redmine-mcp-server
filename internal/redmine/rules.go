@@ -3,6 +3,7 @@ package redmine
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"slices"
 	"strconv"
@@ -93,6 +94,37 @@ func (r *CustomFieldRules) ValidateValues(fieldID int, values []string) ([]strin
 		result[i] = corrected
 	}
 	return result, nil
+}
+
+// GenerateCustomFieldRules converts full custom field definitions from the
+// Redmine admin API into CustomFieldRules. Only issue-type fields are included.
+func GenerateCustomFieldRules(fields []CustomFieldDefinitionFull) *CustomFieldRules {
+	rules := &CustomFieldRules{Fields: make(map[string]CustomFieldRule)}
+	for _, cf := range fields {
+		if cf.CustomizedType != "issue" {
+			continue
+		}
+		rule := CustomFieldRule{Name: cf.Name}
+		for _, pv := range cf.PossibleValues {
+			rule.Values = append(rule.Values, pv.Value)
+		}
+		if cf.IsRequired && len(cf.Trackers) > 0 {
+			for _, t := range cf.Trackers {
+				rule.RequiredByTrackers = append(rule.RequiredByTrackers, t.ID)
+			}
+		}
+		rules.Fields[strconv.Itoa(cf.ID)] = rule
+	}
+	return rules
+}
+
+// Merge updates r with fields from other. Fields present in other overwrite
+// those in r; fields only in r are preserved.
+func (r *CustomFieldRules) Merge(other *CustomFieldRules) {
+	if other == nil {
+		return
+	}
+	maps.Copy(r.Fields, other.Fields)
 }
 
 // GetRequiredFieldsForTracker returns field IDs and names required for a specific tracker.
