@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"os"
 	"slices"
 	"sort"
 	"strconv"
@@ -60,15 +61,21 @@ type ToolHandlers struct {
 	resolver *redmine.Resolver
 	rules    *redmine.CustomFieldRules
 	workflow *redmine.WorkflowRules
+	readOnly bool
 }
 
 // NewToolHandlers creates new tool handlers
 func NewToolHandlers(client *redmine.Client, rules *redmine.CustomFieldRules, workflow *redmine.WorkflowRules) *ToolHandlers {
+	readOnly := os.Getenv("REDMINE_MCP_READ_ONLY") == "true"
+	if readOnly {
+		slog.Info("read-only mode enabled - all write operations will be blocked")
+	}
 	return &ToolHandlers{
 		client:   client,
 		resolver: redmine.NewResolver(client),
 		rules:    rules,
 		workflow: workflow,
+		readOnly: readOnly,
 	}
 }
 
@@ -127,6 +134,14 @@ func enumOpt(values []string) []mcp.PropertyOption {
 		return nil
 	}
 	return []mcp.PropertyOption{mcp.Enum(values...)}
+}
+
+// checkReadOnly returns an error if the server is in read-only mode.
+func (h *ToolHandlers) checkReadOnly() error {
+	if h.readOnly {
+		return fmt.Errorf("server is in read-only mode - write operations are disabled")
+	}
+	return nil
 }
 
 // RegisterTools registers all MCP tools on the server
@@ -976,6 +991,10 @@ func (h *ToolHandlers) handleProjectsList(ctx context.Context, req mcp.CallToolR
 }
 
 func (h *ToolHandlers) handleProjectsCreate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	name, err := req.RequireString("name")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -1146,6 +1165,10 @@ func (h *ToolHandlers) handleIssuesGetById(ctx context.Context, req mcp.CallTool
 }
 
 func (h *ToolHandlers) handleIssuesCreate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	project, err := req.RequireString("project")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -1226,6 +1249,10 @@ func (h *ToolHandlers) handleIssuesCreate(ctx context.Context, req mcp.CallToolR
 }
 
 func (h *ToolHandlers) handleIssuesUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	issueIDFloat, err := req.RequireFloat("issue_id")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -1327,6 +1354,10 @@ func (h *ToolHandlers) handleIssuesUpdate(ctx context.Context, req mcp.CallToolR
 }
 
 func (h *ToolHandlers) handleIssuesCreateSubtask(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	parentIDFloat, err := req.RequireFloat("parent_issue_id")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -1406,6 +1437,10 @@ func (h *ToolHandlers) handleIssuesCreateSubtask(ctx context.Context, req mcp.Ca
 }
 
 func (h *ToolHandlers) handleIssuesAddWatcher(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	issueIDFloat, err := req.RequireFloat("issue_id")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -1441,6 +1476,10 @@ func (h *ToolHandlers) handleIssuesAddWatcher(ctx context.Context, req mcp.CallT
 }
 
 func (h *ToolHandlers) handleIssuesAddRelation(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	issueIDFloat, err := req.RequireFloat("issue_id")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -1699,6 +1738,10 @@ func (h *ToolHandlers) handleProjectsGetDetail(ctx context.Context, req mcp.Call
 }
 
 func (h *ToolHandlers) handleProjectsUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	projectStr, err := req.RequireString("project")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -1781,6 +1824,10 @@ func (h *ToolHandlers) handleProjectsUpdate(ctx context.Context, req mcp.CallToo
 }
 
 func (h *ToolHandlers) handleTimeEntriesCreate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	issueIDFloat, err := req.RequireFloat("issue_id")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -2030,6 +2077,10 @@ func (h *ToolHandlers) handleTimeEntriesReport(ctx context.Context, req mcp.Call
 const maxMCPAttachmentSize = 3 * 1024 * 1024 // 3MB decoded
 
 func (h *ToolHandlers) handleAttachmentsUpload(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	filename, err := req.RequireString("filename")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -2121,6 +2172,10 @@ func (h *ToolHandlers) handleAttachmentsList(ctx context.Context, req mcp.CallTo
 }
 
 func (h *ToolHandlers) handleAttachmentsUploadAndAttach(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	issueIDFloat, err := req.RequireFloat("issue_id")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -2301,6 +2356,10 @@ func (h *ToolHandlers) handleReferenceWorkflow(ctx context.Context, req mcp.Call
 // --- Group A: CRUD Gaps ---
 
 func (h *ToolHandlers) handleTimeEntriesUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	idFloat, err := req.RequireFloat("time_entry_id")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -2342,6 +2401,10 @@ func (h *ToolHandlers) handleTimeEntriesUpdate(ctx context.Context, req mcp.Call
 }
 
 func (h *ToolHandlers) handleTimeEntriesDelete(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	idFloat, err := req.RequireFloat("time_entry_id")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -2360,6 +2423,10 @@ func (h *ToolHandlers) handleTimeEntriesDelete(ctx context.Context, req mcp.Call
 }
 
 func (h *ToolHandlers) handleIssuesRemoveWatcher(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	issueIDFloat, err := req.RequireFloat("issue_id")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -2395,6 +2462,10 @@ func (h *ToolHandlers) handleIssuesRemoveWatcher(ctx context.Context, req mcp.Ca
 }
 
 func (h *ToolHandlers) handleIssuesRemoveRelation(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	idFloat, err := req.RequireFloat("relation_id")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -2512,6 +2583,10 @@ func (h *ToolHandlers) handleSearchGlobal(ctx context.Context, req mcp.CallToolR
 // --- Group B: Batch & Copy ---
 
 func (h *ToolHandlers) handleIssuesBatchUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	issueIDsRaw := getArrayArg(req, "issue_ids")
 	if len(issueIDsRaw) == 0 {
 		return mcp.NewToolResultError("issue_ids is required and must be a non-empty array"), nil
@@ -2641,6 +2716,10 @@ func (h *ToolHandlers) handleIssuesBatchUpdate(ctx context.Context, req mcp.Call
 }
 
 func (h *ToolHandlers) handleIssuesCopy(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	issueIDFloat, err := req.RequireFloat("issue_id")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -2742,6 +2821,10 @@ func (h *ToolHandlers) handleVersionsList(ctx context.Context, req mcp.CallToolR
 }
 
 func (h *ToolHandlers) handleVersionsCreate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	projectStr, err := req.RequireString("project")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -2783,6 +2866,10 @@ func (h *ToolHandlers) handleVersionsCreate(ctx context.Context, req mcp.CallToo
 }
 
 func (h *ToolHandlers) handleVersionsUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	idFloat, err := req.RequireFloat("version_id")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
@@ -2876,6 +2963,10 @@ func (h *ToolHandlers) handleWikiGet(ctx context.Context, req mcp.CallToolReques
 }
 
 func (h *ToolHandlers) handleWikiCreateOrUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
 	projectStr, err := req.RequireString("project")
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
