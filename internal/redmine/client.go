@@ -1371,6 +1371,107 @@ func (c *Client) UpdateVersion(params UpdateVersionParams) error {
 	return err
 }
 
+// IssueCategory represents an issue category in a project
+type IssueCategory struct {
+	ID             int    `json:"id"`
+	Name           string `json:"name"`
+	Project        IDName `json:"project"`
+	AssignedTo     IDName `json:"assigned_to,omitempty"`
+	AssignedToID   int    `json:"-"` // For create/update
+}
+
+// ListIssueCategories returns all issue categories for a project
+func (c *Client) ListIssueCategories(projectID int) ([]IssueCategory, error) {
+	path := fmt.Sprintf("/projects/%d/issue_categories.json", projectID)
+	data, err := c.doRequest("GET", path, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		IssueCategories []IssueCategory `json:"issue_categories"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return resp.IssueCategories, nil
+}
+
+// CreateIssueCategoryParams are parameters for creating an issue category
+type CreateIssueCategoryParams struct {
+	ProjectID    int
+	Name         string
+	AssignedToID int // Optional: default assignee for issues in this category
+}
+
+// CreateIssueCategory creates a new issue category in a project
+func (c *Client) CreateIssueCategory(params CreateIssueCategoryParams) (*IssueCategory, error) {
+	categoryData := map[string]any{
+		"name": params.Name,
+	}
+	if params.AssignedToID > 0 {
+		categoryData["assigned_to_id"] = params.AssignedToID
+	}
+
+	reqBody := map[string]any{
+		"issue_category": categoryData,
+	}
+
+	path := fmt.Sprintf("/projects/%d/issue_categories.json", params.ProjectID)
+	data, err := c.doRequest("POST", path, reqBody)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		IssueCategory IssueCategory `json:"issue_category"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp.IssueCategory, nil
+}
+
+// UpdateIssueCategoryParams are parameters for updating an issue category
+type UpdateIssueCategoryParams struct {
+	CategoryID   int
+	Name         string
+	AssignedToID int
+}
+
+// UpdateIssueCategory updates an existing issue category
+func (c *Client) UpdateIssueCategory(params UpdateIssueCategoryParams) error {
+	categoryData := make(map[string]any)
+
+	if params.Name != "" {
+		categoryData["name"] = params.Name
+	}
+	if params.AssignedToID > 0 {
+		categoryData["assigned_to_id"] = params.AssignedToID
+	}
+
+	if len(categoryData) == 0 {
+		return nil // Nothing to update
+	}
+
+	reqBody := map[string]any{
+		"issue_category": categoryData,
+	}
+
+	path := fmt.Sprintf("/issue_categories/%d.json", params.CategoryID)
+	_, err := c.doRequest("PUT", path, reqBody)
+	return err
+}
+
+// DeleteIssueCategory deletes an issue category
+func (c *Client) DeleteIssueCategory(categoryID int) error {
+	path := fmt.Sprintf("/issue_categories/%d.json", categoryID)
+	_, err := c.doRequest("DELETE", path, nil)
+	return err
+}
+
 // WikiPage represents a wiki page in the index
 type WikiPage struct {
 	Title     string `json:"title"`

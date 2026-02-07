@@ -808,6 +808,53 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		),
 	), h.handleVersionsUpdate)
 
+	// --- Issue Categories ---
+
+	s.AddTool(mcp.NewTool("categories_list",
+		mcp.WithDescription("List all issue categories for a project"),
+		mcp.WithString("project",
+			mcp.Required(),
+			mcp.Description("Project name or ID"),
+		),
+	), h.handleCategoriesList)
+
+	s.AddTool(mcp.NewTool("categories_create",
+		mcp.WithDescription("Create a new issue category in a project"),
+		mcp.WithString("project",
+			mcp.Required(),
+			mcp.Description("Project name or ID"),
+		),
+		mcp.WithString("name",
+			mcp.Required(),
+			mcp.Description("Category name"),
+		),
+		mcp.WithString("assigned_to",
+			mcp.Description("Default assignee name or ID for issues in this category"),
+		),
+	), h.handleCategoriesCreate)
+
+	s.AddTool(mcp.NewTool("categories_update",
+		mcp.WithDescription("Update an existing issue category"),
+		mcp.WithNumber("category_id",
+			mcp.Required(),
+			mcp.Description("Category ID"),
+		),
+		mcp.WithString("name",
+			mcp.Description("New category name"),
+		),
+		mcp.WithString("assigned_to",
+			mcp.Description("Default assignee name or ID"),
+		),
+	), h.handleCategoriesUpdate)
+
+	s.AddTool(mcp.NewTool("categories_delete",
+		mcp.WithDescription("Delete an issue category"),
+		mcp.WithNumber("category_id",
+			mcp.Required(),
+			mcp.Description("Category ID"),
+		),
+	), h.handleCategoriesDelete)
+
 	// --- Group D: Wiki ---
 
 	s.AddTool(mcp.NewTool("wiki_list",
@@ -2893,6 +2940,157 @@ func (h *ToolHandlers) handleVersionsUpdate(ctx context.Context, req mcp.CallToo
 		"success":    true,
 		"version_id": versionID,
 		"message":    "Version updated successfully",
+	})
+}
+
+// --- Issue Categories ---
+
+func (h *ToolHandlers) handleCategoriesList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projectStr, err := req.RequireString("project")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectID, err := h.resolver.ResolveProject(projectStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+	}
+
+	categories, err := h.client.ListIssueCategories(projectID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to list issue categories: %v", err)), nil
+	}
+
+	results := make([]map[string]any, len(categories))
+	for i, c := range categories {
+		result := map[string]any{
+			"id":   c.ID,
+			"name": c.Name,
+		}
+		if c.AssignedTo.ID > 0 {
+			result["assigned_to"] = map[string]any{
+				"id":   c.AssignedTo.ID,
+				"name": c.AssignedTo.Name,
+			}
+		}
+		results[i] = result
+	}
+
+	return jsonResult(map[string]any{
+		"categories": results,
+		"count":      len(categories),
+	})
+}
+
+func (h *ToolHandlers) handleCategoriesCreate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectStr, err := req.RequireString("project")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	name, err := req.RequireString("name")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectID, err := h.resolver.ResolveProject(projectStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+	}
+
+	params := redmine.CreateIssueCategoryParams{
+		ProjectID: projectID,
+		Name:      name,
+	}
+
+	// Resolve assigned_to if provided
+	if assignedTo := req.GetString("assigned_to", ""); assignedTo != "" {
+		userID, err := h.resolver.ResolveUser(assignedTo, projectID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve assigned_to: %v", err)), nil
+		}
+		params.AssignedToID = userID
+	}
+
+	category, err := h.client.CreateIssueCategory(params)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to create issue category: %v", err)), nil
+	}
+
+	result := map[string]any{
+		"id":   category.ID,
+		"name": category.Name,
+	}
+	if category.AssignedTo.ID > 0 {
+		result["assigned_to"] = map[string]any{
+			"id":   category.AssignedTo.ID,
+			"name": category.AssignedTo.Name,
+		}
+	}
+
+	return jsonResult(result)
+}
+
+func (h *ToolHandlers) handleCategoriesUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	idFloat, err := req.RequireFloat("category_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	categoryID := int(idFloat)
+
+	params := redmine.UpdateIssueCategoryParams{
+		CategoryID: categoryID,
+		Name:       req.GetString("name", ""),
+	}
+
+	// Resolve assigned_to if provided
+	if assignedTo := req.GetString("assigned_to", ""); assignedTo != "" {
+		// We don't have project context here, so pass 0 (resolver will search all projects)
+		userID, err := h.resolver.ResolveUser(assignedTo, 0)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve assigned_to: %v", err)), nil
+		}
+		params.AssignedToID = userID
+	}
+
+	if err := h.client.UpdateIssueCategory(params); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to update issue category: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success":     true,
+		"category_id": categoryID,
+		"message":     "Category updated successfully",
+	})
+}
+
+func (h *ToolHandlers) handleCategoriesDelete(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	idFloat, err := req.RequireFloat("category_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	categoryID := int(idFloat)
+
+	if err := h.client.DeleteIssueCategory(categoryID); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to delete issue category: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success":     true,
+		"category_id": categoryID,
+		"message":     "Category deleted successfully",
 	})
 }
 
