@@ -2,14 +2,12 @@ package mcp
 
 import (
 	"bytes"
-	"encoding/base64"
 	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/xuri/excelize/v2"
 	"github.com/ycho/redmine-mcp-server/internal/redmine"
 )
 
@@ -22,8 +20,8 @@ type ProjectAnalysisParams struct {
 	IssueStatus  string   // "all", "open", "closed"
 	Version      string   // filter by version
 	CustomFields []string // specific custom fields to analyze (empty = all)
-	Format       string   // "json", "csv", "excel"
-	AttachTo     string   // "files", "files:v1.0", "wiki", "wiki:PageName", "issue:123"
+	Format       string   // "json", "csv"
+	AttachTo     string   // "dmsf", "dmsf:FolderID", "files", "files:VersionName", "issue:ID"
 }
 
 // ProjectAnalysisResult is the result of project analysis
@@ -41,17 +39,6 @@ type ProjectAnalysisResult struct {
 	TopIssues     []map[string]any `json:"top_issues"`
 	UnlinkedHours float64          `json:"unlinked_hours"`
 	DownloadURL   string           `json:"download_url,omitempty"`
-}
-
-// ProjectsCompareParams are parameters for multi-project comparison
-type ProjectsCompareParams struct {
-	Projects      []struct{ ID int; Name string }
-	From          string
-	To            string
-	IssueStatus   string
-	Format        string
-	AttachTo      string
-	TargetProject int
 }
 
 // ReportGenerator generates project analysis reports
@@ -199,7 +186,7 @@ func (rg *ReportGenerator) calculateSummary(result *ProjectAnalysisResult, entri
 	closedCount := 0
 	openCount := 0
 	for _, issue := range issues {
-		if isClosedStatus(issue.Status.Name) {
+		if issue.ClosedOn != "" {
 			closedCount++
 		} else {
 			openCount++
@@ -568,202 +555,6 @@ func (rg *ReportGenerator) calculateTopIssues(result *ProjectAnalysisResult, ent
 	result.TopIssues = topIssues
 }
 
-// GenerateExcel generates an Excel file from the analysis result
-func (rg *ReportGenerator) GenerateExcel(result *ProjectAnalysisResult) ([]byte, error) {
-	f := excelize.NewFile()
-	defer func() { _ = f.Close() }()
-
-	// Sheet 1: Summary
-	rg.createSummarySheet(f, result)
-
-	// Sheet 2: By Tracker
-	rg.createByTrackerSheet(f, result)
-
-	// Sheet 3: By User
-	rg.createByUserSheet(f, result)
-
-	// Sheet 4: By Version
-	rg.createByVersionSheet(f, result)
-
-	// Sheet 5: By Custom Field
-	rg.createByCustomFieldSheet(f, result)
-
-	// Sheet 6: Monthly Trend
-	rg.createMonthlyTrendSheet(f, result)
-
-	// Sheet 7: Top Issues
-	rg.createTopIssuesSheet(f, result)
-
-	// Delete default Sheet1
-	_ = f.DeleteSheet("Sheet1")
-
-	// Write to buffer
-	buf := new(bytes.Buffer)
-	if err := f.Write(buf); err != nil {
-		return nil, fmt.Errorf("failed to write Excel file: %w", err)
-	}
-
-	return buf.Bytes(), nil
-}
-
-func (rg *ReportGenerator) createSummarySheet(f *excelize.File, result *ProjectAnalysisResult) {
-	sheet := "Summary"
-	_, _ = f.NewSheet(sheet)
-
-	// Title
-	_ = f.SetCellValue(sheet, "A1", "Project Analysis Report")
-	_ = f.SetCellValue(sheet, "A2", fmt.Sprintf("Project: %s", result.Project["name"]))
-	if result.Period != "" {
-		_ = f.SetCellValue(sheet, "A3", fmt.Sprintf("Period: %s", result.Period))
-	}
-
-	// Summary data
-	row := 5
-	_ = f.SetCellValue(sheet, fmt.Sprintf("A%d", row), "Metric")
-	_ = f.SetCellValue(sheet, fmt.Sprintf("B%d", row), "Value")
-	row++
-
-	summaryItems := []struct{ key, label string }{
-		{"total_hours", "Total Hours"},
-		{"person_days", "Person Days"},
-		{"total_issues", "Total Issues"},
-		{"closed_issues", "Closed Issues"},
-		{"open_issues", "Open Issues"},
-		{"contributors", "Contributors"},
-		{"avg_hours_per_person", "Avg Hours/Person"},
-	}
-
-	for _, item := range summaryItems {
-		_ = f.SetCellValue(sheet, fmt.Sprintf("A%d", row), item.label)
-		_ = f.SetCellValue(sheet, fmt.Sprintf("B%d", row), result.Summary[item.key])
-		row++
-	}
-
-	if result.UnlinkedHours > 0 {
-		_ = f.SetCellValue(sheet, fmt.Sprintf("A%d", row), "Unlinked Hours")
-		_ = f.SetCellValue(sheet, fmt.Sprintf("B%d", row), result.UnlinkedHours)
-	}
-}
-
-func (rg *ReportGenerator) createByTrackerSheet(f *excelize.File, result *ProjectAnalysisResult) {
-	sheet := "By Tracker"
-	_, _ = f.NewSheet(sheet)
-
-	headers := []string{"Tracker", "Hours", "Issue Count", "Avg Hours/Issue"}
-	for i, h := range headers {
-		_ = f.SetCellValue(sheet, fmt.Sprintf("%c1", 'A'+i), h)
-	}
-
-	for i, item := range result.ByTracker {
-		row := i + 2
-		_ = f.SetCellValue(sheet, fmt.Sprintf("A%d", row), item["tracker"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("B%d", row), item["hours"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("C%d", row), item["issue_count"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("D%d", row), item["avg_hours"])
-	}
-}
-
-func (rg *ReportGenerator) createByUserSheet(f *excelize.File, result *ProjectAnalysisResult) {
-	sheet := "By User"
-	_, _ = f.NewSheet(sheet)
-
-	headers := []string{"User", "Hours", "Issue Count"}
-	for i, h := range headers {
-		_ = f.SetCellValue(sheet, fmt.Sprintf("%c1", 'A'+i), h)
-	}
-
-	for i, item := range result.ByUser {
-		row := i + 2
-		_ = f.SetCellValue(sheet, fmt.Sprintf("A%d", row), item["user"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("B%d", row), item["hours"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("C%d", row), item["issue_count"])
-	}
-}
-
-func (rg *ReportGenerator) createByVersionSheet(f *excelize.File, result *ProjectAnalysisResult) {
-	sheet := "By Version"
-	_, _ = f.NewSheet(sheet)
-
-	headers := []string{"Version", "Hours", "Issue Count"}
-	for i, h := range headers {
-		_ = f.SetCellValue(sheet, fmt.Sprintf("%c1", 'A'+i), h)
-	}
-
-	for i, item := range result.ByVersion {
-		row := i + 2
-		_ = f.SetCellValue(sheet, fmt.Sprintf("A%d", row), item["version"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("B%d", row), item["hours"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("C%d", row), item["issue_count"])
-	}
-}
-
-func (rg *ReportGenerator) createByCustomFieldSheet(f *excelize.File, result *ProjectAnalysisResult) {
-	sheet := "By Custom Field"
-	_, _ = f.NewSheet(sheet)
-
-	row := 1
-	for fieldName, values := range result.ByCustomField {
-		// Field header
-		_ = f.SetCellValue(sheet, fmt.Sprintf("A%d", row), fieldName)
-		row++
-
-		// Column headers
-		headers := []string{"Value", "Hours", "Issue Count", "Avg Hours", "Percentage"}
-		for i, h := range headers {
-			_ = f.SetCellValue(sheet, fmt.Sprintf("%c%d", 'A'+i, row), h)
-		}
-		row++
-
-		// Data
-		for _, item := range values {
-			_ = f.SetCellValue(sheet, fmt.Sprintf("A%d", row), item["value"])
-			_ = f.SetCellValue(sheet, fmt.Sprintf("B%d", row), item["hours"])
-			_ = f.SetCellValue(sheet, fmt.Sprintf("C%d", row), item["issue_count"])
-			_ = f.SetCellValue(sheet, fmt.Sprintf("D%d", row), item["avg_hours"])
-			_ = f.SetCellValue(sheet, fmt.Sprintf("E%d", row), fmt.Sprintf("%.1f%%", item["percentage"]))
-			row++
-		}
-
-		row++ // Empty row between fields
-	}
-}
-
-func (rg *ReportGenerator) createMonthlyTrendSheet(f *excelize.File, result *ProjectAnalysisResult) {
-	sheet := "Monthly Trend"
-	_, _ = f.NewSheet(sheet)
-
-	headers := []string{"Month", "Hours", "Issue Count"}
-	for i, h := range headers {
-		_ = f.SetCellValue(sheet, fmt.Sprintf("%c1", 'A'+i), h)
-	}
-
-	for i, item := range result.MonthlyTrend {
-		row := i + 2
-		_ = f.SetCellValue(sheet, fmt.Sprintf("A%d", row), item["month"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("B%d", row), item["hours"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("C%d", row), item["issue_count"])
-	}
-}
-
-func (rg *ReportGenerator) createTopIssuesSheet(f *excelize.File, result *ProjectAnalysisResult) {
-	sheet := "Top Issues"
-	_, _ = f.NewSheet(sheet)
-
-	headers := []string{"ID", "Subject", "Tracker", "Status", "Hours"}
-	for i, h := range headers {
-		_ = f.SetCellValue(sheet, fmt.Sprintf("%c1", 'A'+i), h)
-	}
-
-	for i, item := range result.TopIssues {
-		row := i + 2
-		_ = f.SetCellValue(sheet, fmt.Sprintf("A%d", row), item["id"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("B%d", row), item["subject"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("C%d", row), item["tracker"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("D%d", row), item["status"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("E%d", row), item["hours"])
-	}
-}
-
 // GenerateCSV generates a CSV representation of the analysis result
 func (rg *ReportGenerator) GenerateCSV(result *ProjectAnalysisResult) string {
 	var sb strings.Builder
@@ -832,12 +623,10 @@ func (rg *ReportGenerator) AttachResult(content []byte, filename string, params 
 	switch {
 	case attachTo == "files" || strings.HasPrefix(attachTo, "files:"):
 		return rg.attachToFiles(token, filename, params, attachTo)
-	case attachTo == "wiki" || strings.HasPrefix(attachTo, "wiki:"):
-		return rg.attachToWiki(token, filename, params, attachTo)
 	case strings.HasPrefix(attachTo, "issue:"):
 		return rg.attachToIssue(token, filename, params, attachTo)
 	default:
-		return "", fmt.Errorf("invalid attach_to value: %s (valid: dmsf, files, wiki, issue:ID)", attachTo)
+		return "", fmt.Errorf("invalid attach_to value: %s (valid: dmsf, dmsf:FolderID, files, files:VersionName, issue:ID)", attachTo)
 	}
 }
 
@@ -865,51 +654,6 @@ func (rg *ReportGenerator) attachToFiles(token *redmine.UploadToken, filename st
 	}
 
 	return file.ContentURL, nil
-}
-
-func (rg *ReportGenerator) attachToWiki(token *redmine.UploadToken, filename string, params ProjectAnalysisParams, attachTo string) (string, error) {
-	pageTitle := "Reports"
-	if strings.HasPrefix(attachTo, "wiki:") {
-		pageTitle = strings.TrimPrefix(attachTo, "wiki:")
-	}
-
-	// Get or create wiki page
-	wikiPage, err := rg.client.GetWikiPage(params.ProjectID, pageTitle)
-	if err != nil {
-		// Page doesn't exist, create it
-		err = rg.client.CreateOrUpdateWikiPage(redmine.WikiPageParams{
-			ProjectID: params.ProjectID,
-			Title:     pageTitle,
-			Text:      fmt.Sprintf("h1. %s\n\nProject analysis reports are attached to this page.", pageTitle),
-			Comments:  "Created by MCP report generator",
-		})
-		if err != nil {
-			return "", fmt.Errorf("failed to create wiki page: %w", err)
-		}
-	}
-
-	// Update wiki page with attachment
-	currentText := ""
-	if wikiPage != nil {
-		currentText = wikiPage.Text
-	}
-
-	newText := currentText + fmt.Sprintf("\n\n---\n*Report generated on %s*\nattachment:%s",
-		time.Now().Format("2006-01-02 15:04:05"), filename)
-
-	err = rg.client.CreateOrUpdateWikiPage(redmine.WikiPageParams{
-		ProjectID: params.ProjectID,
-		Title:     pageTitle,
-		Text:      newText,
-		Comments:  "Added analysis report",
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to update wiki page: %w", err)
-	}
-
-	// Note: Wiki attachment upload requires different API handling
-	// For now, return a reference to the wiki page
-	return fmt.Sprintf("/projects/%d/wiki/%s", params.ProjectID, pageTitle), nil
 }
 
 func (rg *ReportGenerator) attachToIssue(token *redmine.UploadToken, filename string, params ProjectAnalysisParams, attachTo string) (string, error) {
@@ -967,16 +711,6 @@ func (rg *ReportGenerator) attachToDMSF(content []byte, filename string, params 
 
 // Helper functions
 
-func isClosedStatus(status string) bool {
-	closedStatuses := []string{"Closed", "Rejected", "Resolved", "Done", "關閉", "已解決", "已拒絕"}
-	for _, s := range closedStatuses {
-		if strings.EqualFold(status, s) {
-			return true
-		}
-	}
-	return false
-}
-
 func roundFloat(val float64, precision int) float64 {
 	ratio := float64(1)
 	for i := 0; i < precision; i++ {
@@ -985,109 +719,3 @@ func roundFloat(val float64, precision int) float64 {
 	return float64(int(val*ratio+0.5)) / ratio
 }
 
-// ToBase64 encodes bytes to base64 string
-func ToBase64(data []byte) string {
-	return base64.StdEncoding.EncodeToString(data)
-}
-
-// GenerateComparisonExcel generates an Excel file comparing multiple projects
-func (rg *ReportGenerator) GenerateComparisonExcel(projects []map[string]any) ([]byte, error) {
-	f := excelize.NewFile()
-	defer func() { _ = f.Close() }()
-
-	// Sheet 1: Summary Comparison
-	sheet := "Summary Comparison"
-	_, _ = f.NewSheet(sheet)
-
-	// Headers
-	headers := []string{"Project", "Total Hours", "Person Days", "Total Issues", "Closed Issues", "Contributors", "Avg Hours/Person"}
-	for i, h := range headers {
-		_ = f.SetCellValue(sheet, fmt.Sprintf("%c1", 'A'+i), h)
-	}
-
-	// Data rows
-	for i, p := range projects {
-		row := i + 2
-		proj := p["project"].(map[string]any)
-		summary := p["summary"].(map[string]any)
-
-		_ = f.SetCellValue(sheet, fmt.Sprintf("A%d", row), proj["name"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("B%d", row), summary["total_hours"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("C%d", row), summary["person_days"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("D%d", row), summary["total_issues"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("E%d", row), summary["closed_issues"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("F%d", row), summary["contributors"])
-		_ = f.SetCellValue(sheet, fmt.Sprintf("G%d", row), summary["avg_hours_per_person"])
-	}
-
-	// Sheet 2: By Tracker Comparison
-	sheet2 := "By Tracker"
-	_, _ = f.NewSheet(sheet2)
-
-	row := 1
-	for _, p := range projects {
-		proj := p["project"].(map[string]any)
-		byTracker, ok := p["by_tracker"].([]map[string]any)
-		if !ok {
-			continue
-		}
-
-		_ = f.SetCellValue(sheet2, fmt.Sprintf("A%d", row), proj["name"])
-		row++
-
-		_ = f.SetCellValue(sheet2, fmt.Sprintf("A%d", row), "Tracker")
-		_ = f.SetCellValue(sheet2, fmt.Sprintf("B%d", row), "Hours")
-		_ = f.SetCellValue(sheet2, fmt.Sprintf("C%d", row), "Issue Count")
-		_ = f.SetCellValue(sheet2, fmt.Sprintf("D%d", row), "Avg Hours")
-		row++
-
-		for _, t := range byTracker {
-			_ = f.SetCellValue(sheet2, fmt.Sprintf("A%d", row), t["tracker"])
-			_ = f.SetCellValue(sheet2, fmt.Sprintf("B%d", row), t["hours"])
-			_ = f.SetCellValue(sheet2, fmt.Sprintf("C%d", row), t["issue_count"])
-			_ = f.SetCellValue(sheet2, fmt.Sprintf("D%d", row), t["avg_hours"])
-			row++
-		}
-		row++ // Empty row between projects
-	}
-
-	// Sheet 3: Monthly Trend Comparison
-	sheet3 := "Monthly Trend"
-	_, _ = f.NewSheet(sheet3)
-
-	row = 1
-	for _, p := range projects {
-		proj := p["project"].(map[string]any)
-		trend, ok := p["monthly_trend"].([]map[string]any)
-		if !ok {
-			continue
-		}
-
-		_ = f.SetCellValue(sheet3, fmt.Sprintf("A%d", row), proj["name"])
-		row++
-
-		_ = f.SetCellValue(sheet3, fmt.Sprintf("A%d", row), "Month")
-		_ = f.SetCellValue(sheet3, fmt.Sprintf("B%d", row), "Hours")
-		_ = f.SetCellValue(sheet3, fmt.Sprintf("C%d", row), "Issue Count")
-		row++
-
-		for _, m := range trend {
-			_ = f.SetCellValue(sheet3, fmt.Sprintf("A%d", row), m["month"])
-			_ = f.SetCellValue(sheet3, fmt.Sprintf("B%d", row), m["hours"])
-			_ = f.SetCellValue(sheet3, fmt.Sprintf("C%d", row), m["issue_count"])
-			row++
-		}
-		row++ // Empty row between projects
-	}
-
-	// Delete default Sheet1
-	_ = f.DeleteSheet("Sheet1")
-
-	// Write to buffer
-	buf := new(bytes.Buffer)
-	if err := f.Write(buf); err != nil {
-		return nil, fmt.Errorf("failed to write Excel file: %w", err)
-	}
-
-	return buf.Bytes(), nil
-}

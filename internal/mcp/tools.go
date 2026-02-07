@@ -7,6 +7,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"slices"
 	"sort"
 	"strconv"
@@ -71,8 +72,66 @@ func NewToolHandlers(client *redmine.Client, rules *redmine.CustomFieldRules, wo
 	}
 }
 
+// referenceData holds enum values fetched from Redmine for tool parameter hints.
+type referenceData struct {
+	trackers   []string
+	statuses   []string
+	priorities []string
+	activities []string
+}
+
+// fetchReferenceData loads tracker/status/priority/activity names from Redmine.
+// Never fails — returns empty slices on error so tools still register without enums.
+func (h *ToolHandlers) fetchReferenceData() *referenceData {
+	ref := &referenceData{}
+
+	if trackers, err := h.resolver.GetTrackers(); err != nil {
+		slog.Warn("failed to fetch trackers for enum hints", "error", err)
+	} else {
+		for _, t := range trackers {
+			ref.trackers = append(ref.trackers, t.Name)
+		}
+	}
+
+	if statuses, err := h.resolver.GetStatuses(); err != nil {
+		slog.Warn("failed to fetch statuses for enum hints", "error", err)
+	} else {
+		for _, s := range statuses {
+			ref.statuses = append(ref.statuses, s.Name)
+		}
+	}
+
+	if priorities, err := h.resolver.GetPriorities(); err != nil {
+		slog.Warn("failed to fetch priorities for enum hints", "error", err)
+	} else {
+		for _, p := range priorities {
+			ref.priorities = append(ref.priorities, p.Name)
+		}
+	}
+
+	if activities, err := h.resolver.GetActivities(); err != nil {
+		slog.Warn("failed to fetch activities for enum hints", "error", err)
+	} else {
+		for _, a := range activities {
+			ref.activities = append(ref.activities, a.Name)
+		}
+	}
+
+	return ref
+}
+
+// enumOpt returns a slice containing an mcp.Enum option if values is non-empty,
+// or nil otherwise. Designed for use with append() into variadic option lists.
+func enumOpt(values []string) []mcp.PropertyOption {
+	if len(values) == 0 {
+		return nil
+	}
+	return []mcp.PropertyOption{mcp.Enum(values...)}
+}
+
 // RegisterTools registers all MCP tools on the server
 func (h *ToolHandlers) RegisterTools(s McpServer) {
+	ref := h.fetchReferenceData()
 	// Account
 	s.AddTool(mcp.NewTool("me",
 		mcp.WithDescription("Get current user information"),
@@ -105,16 +164,22 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 	), h.handleProjectsCreate)
 
 	// Issues
+	searchStatuses := append([]string{"open", "closed", "*"}, ref.statuses...)
+
 	s.AddTool(mcp.NewTool("issues_search",
 		mcp.WithDescription("Search issues"),
 		mcp.WithString("project",
 			mcp.Description("Project name or ID"),
 		),
 		mcp.WithString("tracker",
-			mcp.Description("Tracker name or ID"),
+			append([]mcp.PropertyOption{
+				mcp.Description("Tracker name or ID"),
+			}, enumOpt(ref.trackers)...)...,
 		),
 		mcp.WithString("status",
-			mcp.Description("Status: open, closed, all, or specific status name"),
+			append([]mcp.PropertyOption{
+				mcp.Description("Status: open, closed, all, or specific status name"),
+			}, enumOpt(searchStatuses)...)...,
 		),
 		mcp.WithString("assigned_to",
 			mcp.Description("Assignee name or 'me' for current user"),
@@ -166,8 +231,10 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Description("Project name or ID"),
 		),
 		mcp.WithString("tracker",
-			mcp.Required(),
-			mcp.Description("Tracker name or ID"),
+			append([]mcp.PropertyOption{
+				mcp.Required(),
+				mcp.Description("Tracker name or ID"),
+			}, enumOpt(ref.trackers)...)...,
 		),
 		mcp.WithString("subject",
 			mcp.Required(),
@@ -213,13 +280,19 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Description("New description"),
 		),
 		mcp.WithString("status",
-			mcp.Description("New status name or ID"),
+			append([]mcp.PropertyOption{
+				mcp.Description("New status name or ID"),
+			}, enumOpt(ref.statuses)...)...,
 		),
 		mcp.WithString("priority",
-			mcp.Description("New priority name or ID (e.g., Low, Normal, High, Urgent, Immediate)"),
+			append([]mcp.PropertyOption{
+				mcp.Description("New priority name or ID"),
+			}, enumOpt(ref.priorities)...)...,
 		),
 		mcp.WithString("tracker",
-			mcp.Description("New tracker name or ID"),
+			append([]mcp.PropertyOption{
+				mcp.Description("New tracker name or ID"),
+			}, enumOpt(ref.trackers)...)...,
 		),
 		mcp.WithString("assigned_to",
 			mcp.Description("New assignee name or ID"),
@@ -259,7 +332,9 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Description("Subtask subject/title"),
 		),
 		mcp.WithString("tracker",
-			mcp.Description("Tracker name or ID (defaults to parent's tracker)"),
+			append([]mcp.PropertyOption{
+				mcp.Description("Tracker name or ID (defaults to parent's tracker)"),
+			}, enumOpt(ref.trackers)...)...,
 		),
 		mcp.WithString("description",
 			mcp.Description("Subtask description"),
@@ -268,7 +343,9 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Description("Assignee name or ID"),
 		),
 		mcp.WithString("priority",
-			mcp.Description("Priority name or ID (e.g., Low, Normal, High, Urgent, Immediate)"),
+			append([]mcp.PropertyOption{
+				mcp.Description("Priority name or ID"),
+			}, enumOpt(ref.priorities)...)...,
 		),
 		mcp.WithString("start_date",
 			mcp.Description("Start date (YYYY-MM-DD)"),
@@ -316,14 +393,23 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 	s.AddTool(mcp.NewTool("issues_getRequiredFields",
 		mcp.WithDescription("Get required fields for creating an issue in a project/tracker"),
 		mcp.WithString("project", mcp.Required(), mcp.Description("Project name or ID")),
-		mcp.WithString("tracker", mcp.Required(), mcp.Description("Tracker name or ID")),
+		mcp.WithString("tracker",
+			append([]mcp.PropertyOption{
+				mcp.Required(),
+				mcp.Description("Tracker name or ID"),
+			}, enumOpt(ref.trackers)...)...,
+		),
 	), h.handleIssuesGetRequiredFields)
 
 	// Custom Fields
 	s.AddTool(mcp.NewTool("customFields_list",
 		mcp.WithDescription("List custom fields available for a project/tracker"),
 		mcp.WithString("project", mcp.Required(), mcp.Description("Project name or ID")),
-		mcp.WithString("tracker", mcp.Description("Tracker name or ID (optional)")),
+		mcp.WithString("tracker",
+			append([]mcp.PropertyOption{
+				mcp.Description("Tracker name or ID (optional)"),
+			}, enumOpt(ref.trackers)...)...,
+		),
 	), h.handleCustomFieldsList)
 
 	s.AddTool(mcp.NewTool("customFields_listAll",
@@ -376,7 +462,9 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Description("Hours spent"),
 		),
 		mcp.WithString("activity",
-			mcp.Description("Activity name or ID"),
+			append([]mcp.PropertyOption{
+				mcp.Description("Activity name or ID"),
+			}, enumOpt(ref.activities)...)...,
 		),
 		mcp.WithString("comments",
 			mcp.Description("Comments"),
@@ -484,7 +572,9 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 	s.AddTool(mcp.NewTool("reference_workflow",
 		mcp.WithDescription("Show workflow transition rules for trackers. Shows which status transitions are allowed for each tracker."),
 		mcp.WithString("tracker",
-			mcp.Description("Tracker name or ID (optional, shows all trackers if omitted)"),
+			append([]mcp.PropertyOption{
+				mcp.Description("Tracker name or ID (optional, shows all trackers if omitted)"),
+			}, enumOpt(ref.trackers)...)...,
 		),
 	), h.handleReferenceWorkflow)
 
@@ -500,7 +590,9 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Description("Hours spent"),
 		),
 		mcp.WithString("activity",
-			mcp.Description("Activity name or ID"),
+			append([]mcp.PropertyOption{
+				mcp.Description("Activity name or ID"),
+			}, enumOpt(ref.activities)...)...,
 		),
 		mcp.WithString("comments",
 			mcp.Description("Comments"),
@@ -609,13 +701,17 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Items(map[string]any{"type": "number"}),
 		),
 		mcp.WithString("status",
-			mcp.Description("New status name or ID"),
+			append([]mcp.PropertyOption{
+				mcp.Description("New status name or ID"),
+			}, enumOpt(ref.statuses)...)...,
 		),
 		mcp.WithString("assigned_to",
 			mcp.Description("New assignee name or ID"),
 		),
 		mcp.WithString("priority",
-			mcp.Description("New priority name or ID"),
+			append([]mcp.PropertyOption{
+				mcp.Description("New priority name or ID"),
+			}, enumOpt(ref.priorities)...)...,
 		),
 		mcp.WithString("notes",
 			mcp.Description("Notes/comment to add to each issue"),
@@ -746,10 +842,14 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Description("Project name or ID"),
 		),
 		mcp.WithString("tracker",
-			mcp.Description("Tracker name or ID"),
+			append([]mcp.PropertyOption{
+				mcp.Description("Tracker name or ID"),
+			}, enumOpt(ref.trackers)...)...,
 		),
 		mcp.WithString("status",
-			mcp.Description("Status: open, closed, all, or specific status name"),
+			append([]mcp.PropertyOption{
+				mcp.Description("Status: open, closed, all, or specific status name"),
+			}, enumOpt(searchStatuses)...)...,
 		),
 		mcp.WithString("assigned_to",
 			mcp.Description("Assignee name or 'me' for current user"),
@@ -812,38 +912,12 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Description("Custom fields to analyze (comma-separated). Default: all custom fields"),
 		),
 		mcp.WithString("format",
-			mcp.Description("Output format: 'json' (default), 'csv', 'excel'"),
+			mcp.Description("Output format: 'json' (default), 'csv'"),
 		),
 		mcp.WithString("attach_to",
-			mcp.Description("Where to save the report: 'dmsf' (DMSF plugin, recommended), 'dmsf:FolderID', 'files', 'wiki', 'issue:123'. If omitted, returns data directly (or base64 for excel)"),
+			mcp.Description("Where to save the report: 'dmsf' (DMSF plugin, recommended), 'dmsf:FolderID', 'files', 'files:VersionName', 'issue:ID'. If omitted, returns data directly"),
 		),
 	), h.handleReportsProjectAnalysis)
-
-	s.AddTool(mcp.NewTool("reports_projects_compare",
-		mcp.WithDescription("Compare multiple projects side by side. Useful for resource planning and project benchmarking."),
-		mcp.WithString("projects",
-			mcp.Required(),
-			mcp.Description("Project names or IDs (comma-separated)"),
-		),
-		mcp.WithString("from",
-			mcp.Description("Start date (YYYY-MM-DD)"),
-		),
-		mcp.WithString("to",
-			mcp.Description("End date (YYYY-MM-DD)"),
-		),
-		mcp.WithString("issue_status",
-			mcp.Description("Filter by issue status: 'all' (default), 'open', 'closed'"),
-		),
-		mcp.WithString("format",
-			mcp.Description("Output format: 'json' (default), 'csv', 'excel'"),
-		),
-		mcp.WithString("attach_to",
-			mcp.Description("Where to save the report: 'dmsf' (DMSF plugin, recommended), 'dmsf:FolderID', 'files', 'wiki', 'issue:123'"),
-		),
-		mcp.WithString("target_project",
-			mcp.Description("Project to save the report to (required when attach_to is specified)"),
-		),
-	), h.handleReportsProjectsCompare)
 }
 
 // McpServer interface for registering tools
@@ -3616,147 +3690,9 @@ func (h *ToolHandlers) handleReportsProjectAnalysis(ctx context.Context, req mcp
 		}
 		return mcp.NewToolResultText(csv), nil
 
-	case "excel":
-		excelData, err := rg.GenerateExcel(result)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to generate Excel: %v", err)), nil
-		}
-		filename := fmt.Sprintf("%s_analysis_%s.xlsx", project.Identifier, time.Now().Format("20060102"))
-		if params.AttachTo != "" {
-			url, err := rg.AttachResult(excelData, filename, params)
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Failed to attach report: %v", err)), nil
-			}
-			result.DownloadURL = url
-			return jsonResult(result)
-		}
-		// Return base64 encoded Excel
-		return jsonResult(map[string]any{
-			"filename": filename,
-			"content":  ToBase64(excelData),
-			"format":   "base64",
-			"summary":  result.Summary,
-		})
-
 	default: // json
 		return jsonResult(result)
 	}
 }
 
-func (h *ToolHandlers) handleReportsProjectsCompare(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	projectsStr, err := req.RequireString("projects")
-	if err != nil {
-		return mcp.NewToolResultError(err.Error()), nil
-	}
 
-	// Parse project list
-	projectNames := strings.Split(projectsStr, ",")
-	if len(projectNames) < 2 {
-		return mcp.NewToolResultError("At least 2 projects required for comparison"), nil
-	}
-
-	var projects []struct {
-		ID   int
-		Name string
-	}
-
-	for _, name := range projectNames {
-		name = strings.TrimSpace(name)
-		projectID, err := h.resolver.ResolveProject(name)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project '%s': %v", name, err)), nil
-		}
-		project, err := h.client.GetProjectDetail(projectID, nil)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to get project '%s': %v", name, err)), nil
-		}
-		projects = append(projects, struct {
-			ID   int
-			Name string
-		}{ID: projectID, Name: project.Name})
-	}
-
-	issueStatus := req.GetString("issue_status", "all")
-	from := req.GetString("from", "")
-	to := req.GetString("to", "")
-	format := req.GetString("format", "json")
-	attachTo := req.GetString("attach_to", "")
-
-	// Handle target_project for attach_to
-	var targetProjectID int
-	if attachTo != "" {
-		targetProjectStr := req.GetString("target_project", "")
-		if targetProjectStr == "" {
-			return mcp.NewToolResultError("target_project is required when attach_to is specified"), nil
-		}
-		targetProjectID, err = h.resolver.ResolveProject(targetProjectStr)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve target_project: %v", err)), nil
-		}
-	}
-
-	// Generate analysis for each project
-	rg := NewReportGenerator(h.client, h.resolver)
-	var projectResults []map[string]any
-
-	for _, p := range projects {
-		params := ProjectAnalysisParams{
-			ProjectID:   p.ID,
-			ProjectName: p.Name,
-			From:        from,
-			To:          to,
-			IssueStatus: issueStatus,
-		}
-
-		result, err := rg.GenerateProjectAnalysis(params)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to analyze project '%s': %v", p.Name, err)), nil
-		}
-
-		projectResults = append(projectResults, map[string]any{
-			"project":          result.Project,
-			"summary":          result.Summary,
-			"by_tracker":       result.ByTracker,
-			"by_custom_field":  result.ByCustomField,
-			"monthly_trend":    result.MonthlyTrend,
-		})
-	}
-
-	compareResult := map[string]any{
-		"projects": projectResults,
-	}
-	if from != "" || to != "" {
-		compareResult["period"] = fmt.Sprintf("%s ~ %s", from, to)
-	}
-
-	// Handle output format
-	switch format {
-	case "excel":
-		excelData, err := rg.GenerateComparisonExcel(projectResults)
-		if err != nil {
-			return mcp.NewToolResultError(fmt.Sprintf("Failed to generate Excel: %v", err)), nil
-		}
-		filename := fmt.Sprintf("projects_comparison_%s.xlsx", time.Now().Format("20060102"))
-		if attachTo != "" {
-			attachParams := ProjectAnalysisParams{
-				ProjectID: targetProjectID,
-				AttachTo:  attachTo,
-			}
-			url, err := rg.AttachResult(excelData, filename, attachParams)
-			if err != nil {
-				return mcp.NewToolResultError(fmt.Sprintf("Failed to attach report: %v", err)), nil
-			}
-			compareResult["download_url"] = url
-			return jsonResult(compareResult)
-		}
-		return jsonResult(map[string]any{
-			"filename": filename,
-			"content":  ToBase64(excelData),
-			"format":   "base64",
-			"projects": projectResults,
-		})
-
-	default: // json
-		return jsonResult(compareResult)
-	}
-}
