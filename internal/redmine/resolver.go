@@ -17,6 +17,7 @@ type Resolver struct {
 	projects     []Project
 	activities   []TimeEntryActivity
 	customFields []CustomFieldDefinitionFull
+	roles        []Role
 }
 
 // NewResolver creates a new resolver
@@ -268,6 +269,50 @@ func (r *Resolver) ResolvePriority(nameOrID string) (int, error) {
 	return matches[0].ID, nil
 }
 
+// ResolveRole resolves a role name or ID to a role ID
+func (r *Resolver) ResolveRole(nameOrID string) (int, error) {
+	// Try parsing as ID first
+	if id, err := strconv.Atoi(nameOrID); err == nil {
+		return id, nil
+	}
+
+	// Load roles if not cached
+	if r.roles == nil {
+		roles, err := r.client.ListRoles()
+		if err != nil {
+			return 0, fmt.Errorf("failed to load roles: %w", err)
+		}
+		r.roles = roles
+	}
+
+	// Search by name (case-insensitive)
+	query := strings.ToLower(nameOrID)
+	var matches []IDName
+	for _, role := range r.roles {
+		if strings.ToLower(role.Name) == query {
+			matches = append(matches, IDName{ID: role.ID, Name: role.Name})
+		}
+	}
+
+	// If no exact match, try partial match
+	if len(matches) == 0 {
+		for _, role := range r.roles {
+			if strings.Contains(strings.ToLower(role.Name), query) {
+				matches = append(matches, IDName{ID: role.ID, Name: role.Name})
+			}
+		}
+	}
+
+	if len(matches) == 0 {
+		return 0, &ResolveError{Type: "role", Query: nameOrID, NotFound: true}
+	}
+	if len(matches) > 1 {
+		return 0, &ResolveError{Type: "role", Query: nameOrID, Matches: matches}
+	}
+
+	return matches[0].ID, nil
+}
+
 // ResolveActivity resolves an activity name or ID to an activity ID
 func (r *Resolver) ResolveActivity(nameOrID string) (int, error) {
 	// Try parsing as ID first
@@ -513,6 +558,18 @@ func (r *Resolver) GetCustomFields() ([]CustomFieldDefinitionFull, error) {
 		r.customFields = fields
 	}
 	return r.customFields, nil
+}
+
+// GetRoles returns all roles
+func (r *Resolver) GetRoles() ([]Role, error) {
+	if r.roles == nil {
+		roles, err := r.client.ListRoles()
+		if err != nil {
+			return nil, err
+		}
+		r.roles = roles
+	}
+	return r.roles, nil
 }
 
 // ResolveVersion resolves a version name or ID to a version ID within a project

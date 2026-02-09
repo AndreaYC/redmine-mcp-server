@@ -584,6 +584,10 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 		mcp.WithDescription("List all time entry activities"),
 	), h.handleActivitiesList)
 
+	s.AddTool(mcp.NewTool("roles_list",
+		mcp.WithDescription("List all roles available in the Redmine instance"),
+	), h.handleRolesList)
+
 	s.AddTool(mcp.NewTool("reference_workflow",
 		mcp.WithDescription("Show workflow transition rules for trackers. Shows which status transitions are allowed for each tracker."),
 		mcp.WithString("tracker",
@@ -854,6 +858,54 @@ func (h *ToolHandlers) RegisterTools(s McpServer) {
 			mcp.Description("Category ID"),
 		),
 	), h.handleCategoriesDelete)
+
+	// --- Project Memberships ---
+
+	s.AddTool(mcp.NewTool("memberships_list",
+		mcp.WithDescription("List all memberships (users and groups) for a project"),
+		mcp.WithString("project",
+			mcp.Required(),
+			mcp.Description("Project name or ID"),
+		),
+	), h.handleMembershipsList)
+
+	s.AddTool(mcp.NewTool("memberships_add",
+		mcp.WithDescription("Add a user or group to a project with specified roles"),
+		mcp.WithString("project",
+			mcp.Required(),
+			mcp.Description("Project name or ID"),
+		),
+		mcp.WithString("user",
+			mcp.Description("User name or ID (specify either user or group, not both)"),
+		),
+		mcp.WithString("group",
+			mcp.Description("Group name or ID (specify either user or group, not both)"),
+		),
+		mcp.WithArray("roles",
+			mcp.Required(),
+			mcp.Description("Array of role names or IDs to assign"),
+		),
+	), h.handleMembershipsAdd)
+
+	s.AddTool(mcp.NewTool("memberships_update",
+		mcp.WithDescription("Update roles for an existing membership"),
+		mcp.WithNumber("membership_id",
+			mcp.Required(),
+			mcp.Description("Membership ID"),
+		),
+		mcp.WithArray("roles",
+			mcp.Required(),
+			mcp.Description("Array of role names or IDs to assign"),
+		),
+	), h.handleMembershipsUpdate)
+
+	s.AddTool(mcp.NewTool("memberships_remove",
+		mcp.WithDescription("Remove a membership from a project"),
+		mcp.WithNumber("membership_id",
+			mcp.Required(),
+			mcp.Description("Membership ID"),
+		),
+	), h.handleMembershipsRemove)
 
 	// --- Group D: Wiki ---
 
@@ -2364,6 +2416,26 @@ func (h *ToolHandlers) handleActivitiesList(ctx context.Context, req mcp.CallToo
 	})
 }
 
+func (h *ToolHandlers) handleRolesList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	roles, err := h.resolver.GetRoles()
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to list roles: %v", err)), nil
+	}
+
+	result := make([]map[string]any, len(roles))
+	for i, r := range roles {
+		result[i] = map[string]any{
+			"id":   r.ID,
+			"name": r.Name,
+		}
+	}
+
+	return jsonResult(map[string]any{
+		"roles": result,
+		"count": len(roles),
+	})
+}
+
 func (h *ToolHandlers) handleReferenceWorkflow(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	if h.workflow == nil {
 		return mcp.NewToolResultError("Workflow rules not configured. Set WORKFLOW_RULES_FILE or --workflow-rules flag."), nil
@@ -3091,6 +3163,186 @@ func (h *ToolHandlers) handleCategoriesDelete(ctx context.Context, req mcp.CallT
 		"success":     true,
 		"category_id": categoryID,
 		"message":     "Category deleted successfully",
+	})
+}
+
+// --- Project Memberships ---
+
+func (h *ToolHandlers) handleMembershipsList(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projectStr, err := req.RequireString("project")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectID, err := h.resolver.ResolveProject(projectStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+	}
+
+	memberships, err := h.client.GetProjectMemberships(projectID, 1000)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to list memberships: %v", err)), nil
+	}
+
+	result := make([]map[string]any, len(memberships))
+	for i, m := range memberships {
+		entry := map[string]any{
+			"id":      m.ID,
+			"project": map[string]any{"id": m.Project.ID, "name": m.Project.Name},
+			"roles":   m.Roles,
+		}
+		if m.User != nil {
+			entry["user"] = map[string]any{"id": m.User.ID, "name": m.User.Name}
+		}
+		if m.Group != nil {
+			entry["group"] = map[string]any{"id": m.Group.ID, "name": m.Group.Name}
+		}
+		result[i] = entry
+	}
+
+	return jsonResult(map[string]any{
+		"memberships": result,
+		"count":       len(memberships),
+	})
+}
+
+func (h *ToolHandlers) handleMembershipsAdd(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectStr, err := req.RequireString("project")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	projectID, err := h.resolver.ResolveProject(projectStr)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve project: %v", err)), nil
+	}
+
+	userStr := req.GetString("user", "")
+	groupStr := req.GetString("group", "")
+
+	if userStr == "" && groupStr == "" {
+		return mcp.NewToolResultError("Must specify either user or group"), nil
+	}
+	if userStr != "" && groupStr != "" {
+		return mcp.NewToolResultError("Cannot specify both user and group"), nil
+	}
+
+	// Resolve roles
+	rolesArray := getArrayArg(req, "roles")
+	if len(rolesArray) == 0 {
+		return mcp.NewToolResultError("Must specify at least one role"), nil
+	}
+
+	roleIDs := make([]int, 0, len(rolesArray))
+	for _, roleItem := range rolesArray {
+		roleStr, ok := roleItem.(string)
+		if !ok {
+			return mcp.NewToolResultError("Role must be a string (name or ID)"), nil
+		}
+		roleID, err := h.resolver.ResolveRole(roleStr)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve role '%s': %v", roleStr, err)), nil
+		}
+		roleIDs = append(roleIDs, roleID)
+	}
+
+	var userID *int
+	var groupID *int
+
+	if userStr != "" {
+		uid, err := h.resolver.ResolveUser(userStr, projectID)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve user: %v", err)), nil
+		}
+		userID = &uid
+	}
+
+	if groupStr != "" {
+		// Groups are not resolved by name in current implementation - must be ID
+		gid, err := strconv.Atoi(groupStr)
+		if err != nil {
+			return mcp.NewToolResultError("Group must be specified as numeric ID"), nil
+		}
+		groupID = &gid
+	}
+
+	membership, err := h.client.CreateProjectMembership(projectID, userID, groupID, roleIDs)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to create membership: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success":       true,
+		"membership_id": membership.ID,
+		"membership":    membership,
+		"message":       "Membership added successfully",
+	})
+}
+
+func (h *ToolHandlers) handleMembershipsUpdate(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	idFloat, err := req.RequireFloat("membership_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	membershipID := int(idFloat)
+
+	// Resolve roles
+	rolesArray := getArrayArg(req, "roles")
+	if len(rolesArray) == 0 {
+		return mcp.NewToolResultError("Must specify at least one role"), nil
+	}
+
+	roleIDs := make([]int, 0, len(rolesArray))
+	for _, roleItem := range rolesArray {
+		roleStr, ok := roleItem.(string)
+		if !ok {
+			return mcp.NewToolResultError("Role must be a string (name or ID)"), nil
+		}
+		roleID, err := h.resolver.ResolveRole(roleStr)
+		if err != nil {
+			return mcp.NewToolResultError(fmt.Sprintf("Failed to resolve role '%s': %v", roleStr, err)), nil
+		}
+		roleIDs = append(roleIDs, roleID)
+	}
+
+	if err := h.client.UpdateProjectMembership(membershipID, roleIDs); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to update membership: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success":       true,
+		"membership_id": membershipID,
+		"message":       "Membership updated successfully",
+	})
+}
+
+func (h *ToolHandlers) handleMembershipsRemove(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	if err := h.checkReadOnly(); err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	idFloat, err := req.RequireFloat("membership_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	membershipID := int(idFloat)
+
+	if err := h.client.DeleteProjectMembership(membershipID); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to remove membership: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success":       true,
+		"membership_id": membershipID,
+		"message":       "Membership removed successfully",
 	})
 }
 

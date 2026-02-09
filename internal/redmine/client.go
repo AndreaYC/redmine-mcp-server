@@ -300,6 +300,29 @@ func (c *Client) ListIssuePriorities() ([]IssuePriority, error) {
 	return resp.IssuePriorities, nil
 }
 
+// Role represents a Redmine role
+type Role struct {
+	ID   int    `json:"id"`
+	Name string `json:"name"`
+}
+
+// ListRoles returns all roles
+func (c *Client) ListRoles() ([]Role, error) {
+	data, err := c.doRequest("GET", "/roles.json", nil)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Roles []Role `json:"roles"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return resp.Roles, nil
+}
+
 // CustomField represents a custom field value
 type CustomField struct {
 	ID    int         `json:"id"`
@@ -946,6 +969,69 @@ func (c *Client) GetProjectMemberships(projectID int, limit int) ([]ProjectMembe
 	}
 
 	return resp.Memberships, nil
+}
+
+// CreateProjectMembership adds a user or group to a project with specified roles
+func (c *Client) CreateProjectMembership(projectID int, userID *int, groupID *int, roleIDs []int) (*ProjectMembership, error) {
+	if (userID == nil && groupID == nil) || (userID != nil && groupID != nil) {
+		return nil, fmt.Errorf("must specify exactly one of user_id or group_id")
+	}
+	if len(roleIDs) == 0 {
+		return nil, fmt.Errorf("must specify at least one role")
+	}
+
+	membership := map[string]any{
+		"role_ids": roleIDs,
+	}
+	if userID != nil {
+		membership["user_id"] = *userID
+	}
+	if groupID != nil {
+		membership["group_id"] = *groupID
+	}
+
+	payload := map[string]any{
+		"membership": membership,
+	}
+
+	path := fmt.Sprintf("/projects/%d/memberships.json", projectID)
+	data, err := c.doRequest("POST", path, payload)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp struct {
+		Membership ProjectMembership `json:"membership"`
+	}
+	if err := json.Unmarshal(data, &resp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	return &resp.Membership, nil
+}
+
+// UpdateProjectMembership updates the roles for a membership
+func (c *Client) UpdateProjectMembership(membershipID int, roleIDs []int) error {
+	if len(roleIDs) == 0 {
+		return fmt.Errorf("must specify at least one role")
+	}
+
+	payload := map[string]any{
+		"membership": map[string]any{
+			"role_ids": roleIDs,
+		},
+	}
+
+	path := fmt.Sprintf("/memberships/%d.json", membershipID)
+	_, err := c.doRequest("PUT", path, payload)
+	return err
+}
+
+// DeleteProjectMembership removes a membership from a project
+func (c *Client) DeleteProjectMembership(membershipID int) error {
+	path := fmt.Sprintf("/memberships/%d.json", membershipID)
+	_, err := c.doRequest("DELETE", path, nil)
+	return err
 }
 
 // GetProjectCustomFields returns custom fields available for a project/tracker
